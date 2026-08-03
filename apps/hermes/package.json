@@ -1,0 +1,27 @@
+{
+  "name": "@furever/hermes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "report": "tsx src/cli.ts report",
+    "ask": "tsx src/cli.ts ask",
+    "test:amplitude": "tsx src/cli.ts test-amplitude",
+    "test:agent": "node --import tsx --test src/agent/tool-impls.test.ts src/agent/mcp/registry.test.ts src/daily-charts.test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^16.4.7",
+    "hono": "^4.7.4",
+    "https-proxy-agent": "^9.1.0",
+    "tsx": "^4.19.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}

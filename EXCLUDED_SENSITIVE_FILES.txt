@@ -1,0 +1,7 @@
+﻿deploy\fix-cron-card.sh  [FEISHU_REPORT_CHAT_ID]
+deploy\open-all-groups.sh  [FEISHU_REPORT_CHAT_ID]
+deploy\restrict-feishu-deliver.sh  [FEISHU_REPORT_CHAT_ID]
+deploy\sync-coco-prompts.sh  [FEISHU_COCO_ANALYSIS_DOC_TOKEN, FEISHU_COCO_BEHAVIOR_DOC_TOKEN, FEISHU_COCO_SKILL_DOC_TOKEN]
+plans\2026-07-14 CoCo 日报规范治理与 Skill 化计划.md  [FEISHU_COCO_ANALYSIS_DOC_TOKEN, FEISHU_COCO_BEHAVIOR_DOC_TOKEN]
+plans\2026-07-15 CoCo 受控 Agentic 升级.md  [FEISHU_COCO_SKILL_DOC_TOKEN]
+plans\2026-07-21 CoCo 改造成 Hermes Agent GCE 架构.md  [FEISHU_APP_ID, FEISHU_REPORT_CHAT_ID]

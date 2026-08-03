@@ -1,0 +1,23 @@
+# Deprecated local template. Production deployment currently generates a
+# temporary env-vars file in scripts/deploy-hermes-cloudrun.sh.
+# Keep values empty here; never commit production credentials.
+AMPLITUDE_API_KEY: ""
+AMPLITUDE_SECRET_KEY: ""
+AMPLITUDE_RETENTION_CHART_IDS: ""
+AMPLITUDE_DAILY_CHART_IDS: ""
+AMPLITUDE_DASHBOARD_URL: ""
+GEMINI_API_KEY: ""
+GEMINI_MODEL: "gemini-2.5-flash"
+FEISHU_APP_ID: ""
+FEISHU_APP_SECRET: ""
+FEISHU_REPORT_CHAT_ID: ""
+FEISHU_BOT_OPEN_ID: ""
+HERMES_CRON_SECRET: ""
+WIX_SITE_URL: ""
+WIX_SITE_ID: ""
+WIX_API_KEY: ""
+GA4_PROPERTY_ID: ""
+GOOGLE_SERVICE_ACCOUNT_JSON: ""
+FEISHU_WIKI_INDEX_DOC_TOKEN: ""
+FEISHU_COCO_ANALYSIS_DOC_TOKEN: ""
+FEISHU_COCO_BEHAVIOR_DOC_TOKEN: ""

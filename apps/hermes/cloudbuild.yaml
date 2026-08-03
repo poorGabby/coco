@@ -1,0 +1,9 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/furever-dock-hermes-agent/hermes-agent/hermes-report:${_TAG}', '.']
+images:
+  - 'us-central1-docker.pkg.dev/furever-dock-hermes-agent/hermes-agent/hermes-report:${_TAG}'
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+timeout: '600s'
