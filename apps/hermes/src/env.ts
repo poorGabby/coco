@@ -37,7 +37,7 @@ export type Env = {
   feishuCocoSkillDocToken: string;
   /** 受控 Agentic 自由问答开关（默认关闭，关掉即退回现有 askQuestion） */
   hermesAgentEnabled: boolean;
-  /** Stripe 密钥（真实支付流水，日报 Daily Revenue 的首选来源；未配置则回退 Amplitude 口径） */
+  /** Stripe 密钥（保留给非核心支付诊断；正式 Daily Revenue 不使用 Stripe）。 */
   stripeApiKey: string;
   /** MCP 可插拔数据源开关（默认关闭，关掉即完全等价于现状，不加载任何 MCP） */
   hermesMcpEnabled: boolean;

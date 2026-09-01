@@ -16,28 +16,23 @@ export type DailyChartDef = {
   kind: "timeseries" | "retention";
   /** 卡片/Markdown 展示名（写清楚口径） */
   title: string;
-  /**
-   * 分段图只取匹配行（如 cjwne7be 的「新用户」）。
-   * 未匹配时回退为该图全部数值行求和（兼容旧图）。
-   */
+  /** 分段图只取匹配行；未匹配时回退为该图全部数值行求和（兼容旧图）。 */
   segmentPrefer?: RegExp;
 };
 
 /** 正式日报默认图表（Dashboard 给 AI 拉数用的表） */
 export const DEFAULT_DAILY_CHARTS: readonly DailyChartDef[] = [
   {
-    id: "a29etrut",
+    id: "ilhu9t17",
     role: "dau",
     kind: "timeseries",
-    title: "DAU — Daily Active Users",
+    title: "Daily Active Users (DAU) — Calendar Day",
   },
   {
-    id: "cjwne7be",
+    id: "1n0bfs5k",
     role: "new_users",
     kind: "timeseries",
-    title: "New Users（新增用户 · 用户增长）",
-    // 只要「新用户」行，不要与「老用户」求和
-    segmentPrefer: /新用户|new\s*users?/i,
+    title: "New Users (Daily)（每日新增用户 · Daily Uniques）",
   },
   {
     id: "bh0r0h4o",
@@ -49,13 +44,13 @@ export const DEFAULT_DAILY_CHARTS: readonly DailyChartDef[] = [
     id: "ji5sqoml",
     role: "retention_companion",
     kind: "retention",
-    title: "Companion Retention — D1 / D3 / D7",
+    title: "Companion Retention",
   },
   {
     id: "5of8047n",
     role: "retention_purchaser",
     kind: "retention",
-    title: "Purchaser Companion Retention — D1 / D3 / D7",
+    title: "Purchaser Companion Retention",
   },
 ] as const;
 

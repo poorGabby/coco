@@ -1,8 +1,8 @@
-import { fetchAllChartSnapshots, type ChartSnapshot } from "./amplitude.js";
+import type { ChartSnapshot } from "./amplitude.js";
 import type { Env } from "./env.js";
 import { getDocumentRawContent } from "./feishu.js";
 import { generateGeminiReply } from "./llm.js";
-import { buildReportMarkdown } from "./report.js";
+import { buildReportMarkdown, fetchStandardMetricSnapshots } from "./report.js";
 import { ensureWikiCache, searchFulltext } from "./wiki-cache.js";
 
 function shanghaiToday(): string {
@@ -21,17 +21,32 @@ function snapshotToContextLine(s: ChartSnapshot): string {
   if (s.error) {
     return `- [${s.chartId}] ${s.title}: 拉取失败 — ${s.error}`;
   }
+  if (s.kind === "retention" && s.snapshot?.retention) {
+    const retention = s.snapshot.retention;
+    return (["D1", "D3", "D7"] as const).map((day) => {
+      const point = retention.points[day];
+      const pp = point.wowChangePp;
+      const period = retention.currentPeriod
+        ? `${retention.currentPeriod.startDate}~${retention.currentPeriod.endDate}`
+        : "Last 30 days";
+      const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(2)}pp`;
+      const wowCurrent = point.wowCurrentRate == null ? "N/A" : `${(point.wowCurrentRate * 100).toFixed(2)}%`;
+      const wowPrevious = point.comparisonRate == null ? "N/A" : `${(point.comparisonRate * 100).toFixed(2)}%`;
+      return `- ${s.title} — Day ${day.slice(1)}: 主值 overall/combined (${period}) = ${point.rate == null ? "N/A" : `${(point.rate * 100).toFixed(2)}%`} (${point.numerator}/${point.denominator}); WoW 基础为单日 cohort ${retention.currentCohort}=${wowCurrent} (${point.wowCurrentNumerator}/${point.wowCurrentDenominator}) vs ${retention.comparisonCohort}=${wowPrevious} (${point.comparisonNumerator}/${point.comparisonDenominator}); ${wow}`;
+    }).join("\n");
+  }
   const parts = [
     `- ${s.title} (chart_id=${s.chartId}, type=${s.kind}, metric=${s.metricLabel})`,
     `  最近一期: ${s.yesterday ?? "—"} = ${s.yesterdayValue ?? "N/A"}`,
   ];
+  const comparisonKind = "WoW";
   if (s.dayBefore != null || s.dayBeforeValue != null) {
-    parts.push(`  前一期: ${s.dayBefore ?? "—"} = ${s.dayBeforeValue ?? "N/A"}`);
+    parts.push(`  上周同日: ${s.dayBefore ?? "—"} = ${s.dayBeforeValue ?? "N/A"}`);
   }
   if (s.changePct != null) {
-    parts.push(`  DoD: ${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%`);
+    parts.push(`  ${comparisonKind}: ${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%`);
   } else if (s.dayBeforeValue != null || s.dayBefore != null) {
-    parts.push(`  DoD: N/A`);
+    parts.push(`  ${comparisonKind}: N/A`);
   }
   return parts.join("\n");
 }
@@ -162,7 +177,7 @@ export async function askQuestion(
   const isData = isDataQuestion(trimmed);
   const [wikiResult, snapshots] = await Promise.all([
     buildWikiContext(env, trimmed),
-    isData ? fetchAllChartSnapshots(env) : Promise.resolve([] as ChartSnapshot[]),
+    isData ? fetchStandardMetricSnapshots(env) : Promise.resolve([] as ChartSnapshot[]),
   ]);
 
   const dataContext = isData

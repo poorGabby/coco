@@ -17,6 +17,7 @@ REGION="${GCP_REGION:-us-central1}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 VM_NAME="${VM_NAME:-hermes-agent}"
 CONTAINER_NAME="${CONTAINER_NAME:-furever-dock-hermes-agent}"
+HERMES_DATA_DIR="${HERMES_DATA_DIR:-/home/QQ/hermes-data}"
 REPO_NAME="${ARTIFACT_REPO:-hermes-agent}"
 IMAGE_NAME="${IMAGE_NAME:-gateway}"
 
@@ -61,7 +62,7 @@ update_vm() {
     --zone="$ZONE"
 
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" \
-    --command="GCP_PROJECT_ID=$GCP_PROJECT_ID REGION=$REGION CONTAINER_NAME=$CONTAINER_NAME bash -s" \
+    --command="GCP_PROJECT_ID=$GCP_PROJECT_ID REGION=$REGION CONTAINER_NAME=$CONTAINER_NAME HERMES_DATA_DIR=$HERMES_DATA_DIR bash -s" \
     < deploy/vm-restart.sh
 }
 

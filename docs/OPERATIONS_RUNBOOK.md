@@ -93,9 +93,9 @@ bash scripts/deploy.sh update-only
 
 确认 Stripe 是否启用。当前优先使用 Stripe 成功入账并扣除退款的口径；Stripe 不可用时会回退到 Amplitude 购买人数 × `report.ts` 中的固定单价。
 
-### 留存 DoD 异常
+### 留存 WoW 异常
 
-检查 GCS bucket 访问权限和 `retention-cache.json`。留存比较依赖前一日缓存，首次部署可能缺少对比基期。
+检查正式 Retention Chart `/query` 的 `series.combined` 是否包含 D1/D3/D7 完整 `count/outof`，且 `incomplete=false`。主值必须来自 combined；WoW 暂时检查最新成熟单日 cohort 与 7 天前同日 cohort 两侧 D1/D3/D7 均完整，且不得覆盖主值。
 
 ## 7. 变更纪律
 

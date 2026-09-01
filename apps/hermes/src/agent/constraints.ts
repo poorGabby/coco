@@ -6,10 +6,11 @@
  * 工程管道产生口径漂移。后续阶段 analyze.ts 等可反向 import 这里以彻底去重。
  */
 
-/** DoD 术语与基期为 0 的处理（与 analyze.ts 规则 2/8 一致）。 */
-export const DOD_RULES = `所有环比一律使用 DoD（Day-over-Day，美区最近完结日 vs 再前一自然日）。\
-对外一律写「DoD」，禁止出现 Wow / WoW / Week-over-Week / 周环比。\
-当基期（再前一自然日）为 0 时无法计算 DoD，一律写 N/A，禁止编造百分比或写「从 0 恢复」。`;
+/** 各指标对比口径与基期为 0 的处理（与 analyze.ts 一致）。 */
+export const COMPARISON_RULES = `所有核心指标统一使用 WoW。DAU、New Users、Purchase Users、Daily Revenue 比较美区最近完结日与 7 天前同日，并写「较上周同日」。\
+Retention 主值读取正式 Chart /query 的 overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点差。必须遵守 valueScope=overall-combined、wowScope=single-cohort-week-over-week，禁止 cohort rate 覆盖主值。\
+展示、告警和分析必须复用 snapshot 中的 comparison 日期/cohort、数值和 WoW，不得重新取数或改算。\
+当对应基期为 0 时无法计算变化率，一律写 N/A，禁止编造百分比或写「从 0 恢复」。`;
 
 /** 日期口径（与 amplitude.ts / 日报标题一致）。 */
 export const DATE_RULES = `数据时区为 America/Denver。提及日期一律用「美区 MM-DD」，\
@@ -25,4 +26,4 @@ export const UNIQUES_SUM_CAVEAT = `注意：跨多日求和得到的是「每日
 对 New_Users 等「每人只新增一次」的指标，日和可近似为区间新增总数。`;
 
 /** 组合成一段 agent 可注入的约束说明。 */
-export const AGENT_CONSTRAINTS = [DATE_RULES, DOD_RULES, NO_FABRICATION, UNIQUES_SUM_CAVEAT].join("\n");
+export const AGENT_CONSTRAINTS = [DATE_RULES, COMPARISON_RULES, NO_FABRICATION, UNIQUES_SUM_CAVEAT].join("\n");

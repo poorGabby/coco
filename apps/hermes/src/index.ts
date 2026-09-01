@@ -20,6 +20,10 @@ import {
 import { handleCocoMcpRequest } from "./coco-mcp.js";
 import { ensureWikiCache, wikiCacheStats, searchFulltext } from "./wiki-cache.js";
 import { addMessage, getHistory, toGeminiContents, stats as convStats } from "./conversation.js";
+import {
+  isTakeoverVersionQuery,
+  TAKEOVER_VERSION_REPLY,
+} from "./takeover-version.js";
 
 const env = loadEnv();
 const app = new Hono();
@@ -123,6 +127,9 @@ app.post("/hermes/ask", async (c) => {
   if (!question) {
     return c.json({ error: "question is required" }, 400);
   }
+  if (isTakeoverVersionQuery(question)) {
+    return c.json({ ok: true, question, answer: TAKEOVER_VERSION_REPLY });
+  }
   try {
     const answer = await answerFreeform(question);
     return c.json({ ok: true, question, answer });
@@ -223,6 +230,13 @@ app.post("/feishu/events", async (c) => {
       // 存入对话记忆
       if (text) {
         addMessage(chatId, "user", text);
+      }
+
+      // 接管验收口令：不调用模型或数据源，确保回复可稳定识别。
+      if (isTakeoverVersionQuery(text)) {
+        await replyMessage(env, messageId, TAKEOVER_VERSION_REPLY);
+        addMessage(chatId, "model", TAKEOVER_VERSION_REPLY);
+        return;
       }
 
       // 私聊也支持「日报」；群内同样走交互式卡片

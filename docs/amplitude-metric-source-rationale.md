@@ -11,9 +11,9 @@
 | 端点 | 覆盖指标 | 说明 |
 |---|---|---|
 | Segmentation API v2 `/api/2/events/segmentation` | DAU、New Users、WAU、Purchase(→Revenue) | 现算,返回结构化 JSON |
-| Chart Export API v3 `/api/3/chart/{id}/csv` | Companion / Purchaser Retention | 读图表算好的 CSV |
+| Saved Chart API v3 `/api/3/chart/{id}/query` | Companion / Purchaser Retention | 读 Breakdown Table overall/combined JSON |
 
-代码位置:Segmentation 见 `apps/hermes/src/amplitude-skill.ts`;Retention 见 `apps/hermes/src/amplitude.ts` 的 `fetchChartSnapshotLegacy` / `extractRetention`;编排见 `fetchAllChartSnapshots`。
+代码位置：正式核心 Chart 标准函数见 `apps/hermes/src/standard-chart-metrics.ts`；Retention 使用 `fetchRetentionChartData` / `parseCombinedRetention`，日报和问答统一经 ToolRegistry 调用。
 
 ---
 
@@ -30,7 +30,7 @@
 ⚠️ **不发送 `i`(interval)参数**:`i` + `group_by` 会触发 HTTP 400(源码显式注释)。
 ⚠️ **不发送 `timezone` 参数**:Amplitude 默认按项目时区(Denver)解释 `start/end`,与我们计算日期的时区一致,无需显式传。
 
-日期由 `amplitudeDateStr(offset)` 生成,在 America/Denver 时区下取偏移日。`yesterday=amplitudeDateStr(-1)`、`dayBefore=amplitudeDateStr(-2)`。
+日期由 `amplitudeDateStr(offset)` 生成,在 America/Denver 时区下取偏移日。`currentDate=amplitudeDateStr(-1)`、`comparisonDate=amplitudeDateStr(-8)`。
 
 ---
 
@@ -42,7 +42,7 @@
 | measure (`m`) | `uniques` |
 | `start` / `end` | `amplitudeDateStr(-7)` → `amplitudeDateStr(-1)`(近 7 天,Denver) |
 | 时区 | America/Denver(项目默认,未显式传) |
-| 取值 | `dailyTrend[yesterday]` 单日值;环比 = 昨日 vs 前日 |
+| 取值 | 当前日值;WoW = 当前日 vs 7 天前同日 |
 | 07-09 实测 | **99** |
 
 ### 2. New Users
@@ -53,7 +53,7 @@
 | measure (`m`) | `uniques` |
 | `start` / `end` | `amplitudeDateStr(-7)` → `amplitudeDateStr(-1)` |
 | 时区 | America/Denver |
-| 取值 | `dailyTrend[yesterday]` 单日值;环比 = 昨日 vs 前日 |
+| 取值 | 当前日值;WoW = 当前日 vs 7 天前同日 |
 | 07-09 实测 | **51** |
 
 ### 3. WAU(自然周,week-to-date)
@@ -83,12 +83,12 @@
 ### 5. Retention(Companion / Purchaser)
 | 项 | 值 |
 |---|---|
-| 端点 | `GET /api/3/chart/{id}/csv` |
-| Chart ID | Companion `ji5sqoml`、Purchaser `1pzj77uk`(env `AMPLITUDE_RETENTION_CHART_IDS`) |
+| 端点 | `GET /api/3/chart/{id}/query` |
+| Chart ID | Companion `ji5sqoml`、Purchaser `5of8047n` |
 | 图表类型 | N-Day Retention(UTC-7) |
-| 读取 | CSV 的 "Overall Retained %" 行(Amplitude 动态分母,逐日缩小) |
+| 读取 | Chart JSON `series.combined` 第一行，D1/D3/D7 索引 2/4/8 的 count/outof/incomplete |
 | 展示天数 | **D1 / D3 / D7**(`KEY_DAYS={1,3,7}`,2026-07-11 从 {1,3,7,14,30} 收窄) |
-| 环比 | 与昨日运行时缓存值对比(`retention-cache.json` @ GCS,>48h 失效) |
+| WoW | 暂时使用最新成熟单日 cohort vs 7 天前同日 cohort 的百分点差；仅用于 comparison，不影响 overall 主值 |
 | 07-09 实测 | Companion `D1=26.0% D3=21.0% D7=16.2%`;Purchaser `D1=46.7% D3=44.4% D7=43.5%` |
 
 ---
@@ -127,7 +127,7 @@ dailyTrend: ... "07-08":88, "07-09":99, "07-10":107   (每日独立按日期存)
 
 ## 五、差异根因(明确)
 
-- **DAU/New Users 高约 5**:Segmentation 用官方 `_active`/`_new`;对比图表(`a29etrut`)用另一套事件/过滤。同天、同时区、历史稳定,唯一区别是查询口径。实测:Segmentation 99 vs 图表 94。
+- **历史 DAU 对账（已废止）**：下方 `a29etrut` 数据仅记录 2026-07 的旧 7 日移动平均 Chart 对账，不再是正式 DAU。当前正式口径是 Calendar Day Chart `ilhu9t17` 的 `_active` uniques，按 America/Denver 完结自然日读取，不做 rolling average。
 - **WAU 低约 56**:机器人 = 本周一→昨日的 **week-to-date**(现 4 天);图表 = **整周**(~287-290)。窗口天数不同。
 
 > 均**非**时区、UTC 边界或 `i` 参数所致——这些假设已逐条实测排除。
@@ -146,9 +146,9 @@ dailyTrend: ... "07-08":88, "07-09":99, "07-10":107   (每日独立按日期存)
 
 ---
 
-## 七、Retention 例外:为何唯独它走 Chart CSV
+## 七、Retention 例外：为何它直接读取 Chart `/query`
 
-前六节的结论(推荐 Segmentation API)只适用于 DAU / New Users / WAU / Purchase 四项。**Retention(Companion / Purchaser)是唯一例外,走 Chart Export API v3(`/api/3/chart/{id}/csv`),而非 Segmentation。** 这是有意为之,原因如下:
+Retention 不自行重建留存，直接读取正式 Amplitude saved Chart `/query` 的 overall/combined。这确保 CoCo 主值与 Breakdown Table 第一行一致。
 
 **7.1 留存计算本身复杂,不宜自己现算。**
 留存率 = 「Day 0 触发起始事件的用户,在第 N 天回访目标事件的比例」。它涉及:
@@ -162,8 +162,9 @@ Segmentation API 不直接产出这种矩阵。若自己用原始事件现算,�
 推荐 Segmentation 的核心理由是"用 Amplitude 官方标准定义、可审计、稳定"。Retention 走 Chart 恰恰是**同一原则的延伸**——留存的官方标准定义就封装在图表里,读图表 = 采用官方口径。两者共同的取向都是:**优先采用 Amplitude 的权威定义,而非自搭口径。** 区别只在于该定义的载体:简单指标在 Segmentation 的内置事件(`_active`/`_new`),复杂指标(留存)在 Chart。
 
 **7.3 例外的代价与已知注意点。**
-- Retention 因此继承了 Chart CSV 的解析复杂度(N-Day vs Bracket 格式、表头识别),这部分逻辑集中在 `extractRetention`,已针对两种格式做了兼容。
-- 环比依赖运行时缓存(`retention-cache.json` @ GCS,>48h 失效),而非同一份 CSV 内的历史列——因为图表的动态分母使"前一日的同一指标"无法从当日 CSV 直接取得。
+- Retention 只访问 `/query`，不访问或混用 `/csv`。
+- 主值直接读取 `series.combined`，不选择任何单日 cohort。
+- 当前 Chart 未返回 previous overall，因此 WoW 暂时读取同一 `/query` 中最新成熟单日 cohort 与 7 天前 cohort。snapshot 明确区分 `valueScope=overall-combined` 与 `wowScope=single-cohort-week-over-week`，cohort rate 不得覆盖主值。
 - 展示裁剪为 **D1 / D3 / D7**(`KEY_DAYS={1,3,7}`),与图表标题口径一致;小样本下高阶留存(D14/D30)噪声大,已移除。
 
 **7.4 一句话。**
@@ -177,7 +178,7 @@ Segmentation API 不直接产出这种矩阵。若自己用原始事件现算,�
 
 | 指标 | Segmentation(机器人) | Chart(UI) | 结论 |
 |---|---|---|---|
-| DAU 07-09 | 99 | 94 (`a29etrut`) | 口径差 5 |
+| DAU 07-09（历史） | 99 | 94（旧 Chart `a29etrut`） | 历史证据；当前正式 DAU 已切换为 `ilhu9t17` Calendar Day |
 | New Users 07-09 | 51 | 46 (`cjwne7be` 新用户行) | 口径差 5 |
 | WAU | 234(4 天 week-to-date) | 287-290(整周 `z9j6r8us`) | 窗口不同 |
 | Revenue 07-09 | $26.97 | $26.97 (`xhd4uffg`) | ✅ 一致 |

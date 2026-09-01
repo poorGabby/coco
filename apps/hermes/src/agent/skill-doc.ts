@@ -7,7 +7,7 @@ import { AGENT_CONSTRAINTS } from "./constraints.js";
  *
  * 分层理念：Soul（行为手册）/ Skill（本文件解析的口径文档）/ Tools（代码 + 不变量）。
  * 这里只负责把口径的「表述/政策」从飞书取来注入 system prompt；
- * 真正的安全不变量（真算 DoD、基期 0→null/N/A、日期校验、数值只来自工具）
+ * 真正的安全不变量（真算 WoW、基期 0→null/N/A、日期校验、数值只来自工具）
  * 始终由工具与代码保证，飞书文档改不了这些底线。
  *
  * 解析链（与 ask.ts 的 resolveSystemPrompt 一致）：

@@ -32,10 +32,14 @@ if [[ ! -f "$ROOT/.env" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1091
-set -a
-source <(grep -v '^\s*#' "$ROOT/.env" | grep -v '^\s*$' | sed 's/\r$//')
-set +a
+# Load dotenv values without evaluating them as shell code. This also accepts
+# CRLF handover files created on Windows and preserves '=' inside values.
+while IFS='=' read -r key value || [[ -n "$key" ]]; do
+  key="${key%$'\r'}"
+  value="${value%$'\r'}"
+  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+  export "$key=$value"
+done < "$ROOT/.env"
 
 # .env 里本地调试用的 HTTPS_PROXY 会导致 gcloud / Cloud Build 连接失败
 unset HTTPS_PROXY HTTP_PROXY ALL_PROXY https_proxy http_proxy all_proxy
@@ -50,7 +54,7 @@ done
 
 REGISTRY="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPO_NAME}"
 TAG="v-$(date +%Y%m%d-%H%M%S)"
-IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+IMAGE="${HERMES_DEPLOY_IMAGE:-${REGISTRY}/${IMAGE_NAME}:${TAG}}"
 
 echo "==> GCP project: $GCP_PROJECT_ID"
 "${GCLOUD}" config set project "$GCP_PROJECT_ID"
@@ -65,8 +69,12 @@ if ! "${GCLOUD}" artifacts repositories describe "$REPO_NAME" --location="$REGIO
     --repository-format=docker --location="$REGION"
 fi
 
-echo "==> Build & push: $IMAGE"
-"${GCLOUD}" builds submit "$APP_DIR" --tag "$IMAGE" --timeout=1200
+if [[ -n "${HERMES_DEPLOY_IMAGE:-}" ]]; then
+  echo "==> Reusing prebuilt image: $IMAGE"
+else
+  echo "==> Build & push: $IMAGE"
+  "${GCLOUD}" builds submit "$APP_DIR" --tag "$IMAGE" --timeout=1200
+fi
 
 echo "==> Deploy Cloud Run: $SERVICE_NAME"
 # 生产环境无需 HTTPS_PROXY；Gemini / Amplitude 在 GCP 上直连
@@ -76,7 +84,7 @@ cat > "$ENV_VARS_FILE" <<EOF
 AMPLITUDE_API_KEY: "${AMPLITUDE_API_KEY}"
 AMPLITUDE_SECRET_KEY: "${AMPLITUDE_SECRET_KEY}"
 AMPLITUDE_RETENTION_CHART_IDS: "${AMPLITUDE_RETENTION_CHART_IDS}"
-AMPLITUDE_DAILY_CHART_IDS: "${AMPLITUDE_DAILY_CHART_IDS:-a29etrut,cjwne7be,bh0r0h4o,ji5sqoml,5of8047n}"
+AMPLITUDE_DAILY_CHART_IDS: "${AMPLITUDE_DAILY_CHART_IDS:-ilhu9t17,1n0bfs5k,bh0r0h4o,ji5sqoml,5of8047n}"
 AMPLITUDE_DASHBOARD_URL: "${AMPLITUDE_DASHBOARD_URL:-}"
 GEMINI_API_KEY: "${GEMINI_API_KEY}"
 GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.5-flash}"
@@ -117,28 +125,32 @@ echo "    飞书事件回调: ${SERVICE_URL}/feishu/events"
 echo "    日报预览:     ${SERVICE_URL}/hermes/report"
 echo ""
 
-echo "==> Cloud Scheduler (每天北京时间 9:00)"
-# --message-body="{}" 是必须的：POST 无 body 时 Google Frontend 返回 411 Length Required
-if "${GCLOUD}" scheduler jobs describe "$SCHEDULER_JOB" --location="$REGION" &>/dev/null; then
-  "${GCLOUD}" scheduler jobs update http "$SCHEDULER_JOB" \
-    --location="$REGION" \
-    --schedule="0 9 * * *" \
-    --time-zone="Asia/Shanghai" \
-    --uri="${SERVICE_URL}/hermes/daily" \
-    --http-method=POST \
-    --update-headers="X-Cron-Secret=${HERMES_CRON_SECRET}" \
-    --message-body="{}" \
-    --attempt-deadline=300s
+if [[ "${SKIP_SCHEDULER_UPDATE:-0}" == "1" ]]; then
+  echo "==> Cloud Scheduler update skipped (SKIP_SCHEDULER_UPDATE=1)"
 else
-  "${GCLOUD}" scheduler jobs create http "$SCHEDULER_JOB" \
-    --location="$REGION" \
-    --schedule="0 9 * * *" \
-    --time-zone="Asia/Shanghai" \
-    --uri="${SERVICE_URL}/hermes/daily" \
-    --http-method=POST \
-    --headers="X-Cron-Secret=${HERMES_CRON_SECRET}" \
-    --message-body="{}" \
-    --attempt-deadline=300s
+  echo "==> Cloud Scheduler (每天北京时间 9:00)"
+  # --message-body="{}" 是必须的：POST 无 body 时 Google Frontend 返回 411 Length Required
+  if "${GCLOUD}" scheduler jobs describe "$SCHEDULER_JOB" --location="$REGION" &>/dev/null; then
+    "${GCLOUD}" scheduler jobs update http "$SCHEDULER_JOB" \
+      --location="$REGION" \
+      --schedule="0 9 * * *" \
+      --time-zone="Asia/Shanghai" \
+      --uri="${SERVICE_URL}/hermes/daily" \
+      --http-method=POST \
+      --update-headers="X-Cron-Secret=${HERMES_CRON_SECRET}" \
+      --message-body="{}" \
+      --attempt-deadline=300s
+  else
+    "${GCLOUD}" scheduler jobs create http "$SCHEDULER_JOB" \
+      --location="$REGION" \
+      --schedule="0 9 * * *" \
+      --time-zone="Asia/Shanghai" \
+      --uri="${SERVICE_URL}/hermes/daily" \
+      --http-method=POST \
+      --headers="X-Cron-Secret=${HERMES_CRON_SECRET}" \
+      --message-body="{}" \
+      --attempt-deadline=300s
+  fi
 fi
 
 echo ""

@@ -9,7 +9,7 @@ import { loadEnv } from "./src/env.js";
  */
 const DEFAULTS = [
   "7/6–7/12 new users 一共多少人",
-  "最近一天的 DAU 是多少？DoD 怎么样？",
+  "最近一天的 DAU 是多少？WoW 怎么样？",
   "版本更新了几次？",
 ];
 

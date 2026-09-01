@@ -4,25 +4,26 @@
 
 ## 1. 数据源
 
-**Amplitude Chart Export API v3**
+**Amplitude saved Chart API v3**
 
 ```
-GET https://amplitude.com/api/3/chart/{chart_id}/csv
+GET https://amplitude.com/api/3/chart/{chart_id}/query   # DAU, New Users, and Retention JSON
+GET https://amplitude.com/api/3/chart/{chart_id}/csv     # other daily Chart rows
 Authorization: Basic base64(apiKey:secretKey)
 ```
 
-响应格式：JSON wrapper `{"data": "<csv string>"}`，直接返回 CSV 文本则无 wrapper。
+Retention 只使用 `/query` 的结构化 JSON；禁止混用 `/csv`。其他 CSV Chart 通常返回 JSON wrapper `{"data": "<csv string>"}`。
 
 ## 2. Chart 清单（当前 6+1 个）
 
 | Chart ID | 指标 | 类型 | 粒度 | 备注 |
 |----------|------|------|------|------|
-| `a29etrut` | DAU | timeseries | 日 | 单行 "None" |
+| `ilhu9t17` | Daily Active Users (DAU) — Calendar Day | timeseries | 日 | `_active` uniques；America/Denver calendar day；无 rolling average；单行 `None` |
 | `z9j6r8us` | WAU | timeseries | **周** | 需要跳过未完结周 |
-| `cjwne7be` | New Users | timeseries | 日 | ⚠️ 分段图表：新用户/老用户两行，求和 |
-| `ji5sqoml` | Companion Retention | retention (N-Day) | 日 | D1/D3/D7/D14/D30 |
+| `1n0bfs5k` | New Users (Daily) | timeseries | 日 | `_new` Daily Uniques；单行 `None`；current 与 7 天前同日来自同一次 `/query` |
+| `ji5sqoml` | Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined D1/D3/D7 |
 | `xhd4uffg` | Purchase Completed | timeseries (分段) | 日 | ⚠️ 独立处理：不通过通用 parser，`deriveRevenueSnapshot` 独占总收入计算 |
-| `1pzj77uk` | Purchaser Companion Retention | retention (N-Day) | 日 | D1/D3/D7/D14/D30 |
+| `5of8047n` | Purchaser Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined；purchase_completed >=1 during Last 365 days |
 | *(derived)* | Daily Revenue | 计算值 | 日 | `xhd4uffg` 独立拉取，9.99/6.99 分段 × 人数求和 |
 
 **配置入口**: `AMPLITUDE_CHART_IDS` 环境变量，逗号分隔。
@@ -80,19 +81,16 @@ Authorization: Basic base64(apiKey:secretKey)
 - 依赖 Amplitude chart 时间列格式严格为 `YYYY-MM-DD`
 - 周图的"跳过未完结周期"逻辑基于启发式阈值（7 天），不是从 Amplitude metadata 获取
 
-### 4.3 Retention 取值 (`extractRetention`)
+### 4.3 Retention 取值 (`parseCombinedRetention`)
 
-**关键决策：N-Day vs Bracket 自动检测**
+Retention 不经过 CSV parser。标准函数读取 `/query` 的唯一正式 segment series，并从 `series.combined` 取 Breakdown Table 第一行：index 2/4/8 分别是 Day 1/3/7。每个 cell 的 `count/outof` 直接形成 numerator/denominator/rate；`incomplete=true` 时 fail closed。
 
-- 找 `"Retained %"` 行
-- 扫描所有 `Day X` 列头
-- 如果列头含 `Day X-Y` 模式 → Bracket（全量展示）
-- 否则 → N-Day（只展示 D1/D3/D7/D14/D30 里程碑）
-
-**Day-over-Day 对比**：
-- 同一个 retention chart 每次返回的是**今天每个 cohort 的 N-Day 值**，不是昨天的值
-- 因此 DoD 对比通过 **cache** 实现：存下昨天的 D1 值（等），今天用昨天的作为 dayBefore
-- 若某天 cache 丢失，retention 的 DoD 显示为 N/A —— 这是设计行为，不是 bug
+**Retention WoW 对比**：
+- 从同一个正式 Chart JSON response 的 `series.combined` 直接读取 Breakdown Table 第一行 D1/D3/D7（索引 2/4/8）
+- 主值不选择单日 cohort，始终来自 `series.combined`
+- WoW 暂时独立选择 D1/D3/D7 均成熟的最近单日 cohort，并与 7 天前同日 cohort 比较百分点差
+- snapshot 标记 `valueScope=overall-combined`、`wowScope=single-cohort-week-over-week`；cohort rate 不得覆盖主值
+- 后续 Chart 提供 previous overall 后，仅升级 WoW scope，主值逻辑不变
 
 ## 5. Revenue 独立管线 (`deriveRevenueSnapshot`)
 
@@ -159,7 +157,7 @@ for (let i = 0; i < ids.length; i += 3) {
 | 2 | `deriveRevenueSnapshot` | 价格分段硬编码，同一 chart 请求两次 | 新增价格点需改代码；浪费一次 HTTP 请求 |
 | 3 | `parseChartCsv` 数据行判定 | 分段图表回退逻辑依赖 "有数值的 cell" | 全 0 的分段会被误过滤 |
 | 4 | `fetchAllChartSnapshots` | 无重试机制 | 偶发 HTTP 429 时该 batch 全部失败 |
-| 5 | `extractRetention` | 缓存 48h 过期，cache miss 时 DoD 为 N/A | 超过 2 天不跑日报，retention DoD 全部显示 0% |
+| 5 | Retention dual scope | `series.combined` 缺少完整 D1/D3/D7 时 fail closed；WoW 两侧 cohort 任一 D1/D3/D7 未成熟则 fail closed | headline overall 与 cohort WoW 分字段保存，禁止互相覆盖 |
 | 6 | 时区 | Amplitude 内部时间处理不依赖 UTC offset 而是硬编码 +15:00 | Amplitude 项目改时区（如改到 UTC-8）会导致截数时间偏差 |
 | 7 | `CHART_TITLE_OVERRIDES` | 空对象，依赖 Amplitude chart 名称 | chart 改名后日报标题随之变化 |
 | 8 | `buildAnalysisPrompt` | 要求"至少 1 个 alert"，但全部指标正常时模型可能虚构 alert | fallback 在无异常时会生成"无显著告警"的 placeholder |
@@ -172,7 +170,7 @@ for (let i = 0; i < ids.length; i += 3) {
 | `src/report.ts` | 管线编排、revenue 计算、Markdown/飞书日报 |
 | `src/analyze.ts` | LLM 分析 prompt、fallback 规则 |
 | `src/card.ts` | 飞书卡片 JSON 构建 |
-| `src/cache.ts` | Retention DoD 对比缓存（GCS/本地文件） |
+| `src/standard-chart-metrics.ts` | Retention overall/combined 解析与 previous-combined 缺失时的 N/A snapshot |
 | `src/env.ts` | 环境变量加载与校验 |
 | `.env` | 本地密钥与配置 |
 | `deploy/env-vars.yaml` | Cloud Run 配置 |

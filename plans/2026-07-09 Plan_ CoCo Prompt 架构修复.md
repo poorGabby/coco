@@ -475,15 +475,15 @@ const ANALYSIS_SYSTEM_PROMPT = `
 
 本日报所有变化均采用：
 
-**DoD（Day-over-Day）**
+**WoW（Week-over-Week）**
 
 表示：
 
-昨日（Yesterday）
+当前已完结美区日期
 vs
-前一日（Day Before）
+7 天前同日
 
-如果输入字段仍命名为 \`wow_change\`，请理解为 **DoD Change**，不要理解为 Week-over-Week。
+输入字段 \`wow_change\` 表示同星期比较；Retention 使用百分点差。
 
 不要将 WAU 当作 DAU。
 
@@ -495,7 +495,7 @@ vs
 
 满足任意条件：
 
-- 核心指标 DoD 下降超过 15%
+- 普通核心指标 WoW 下降超过 15%，或 Retention WoW 下降超过 15pp
 - 收入、购买、转化、留存等关键商业指标显著下降
 - 多个相关指标同时走弱
 - 出现明显异常需要产品团队关注
@@ -803,4 +803,3 @@ export async function analyzeDailySnapshots(
     - 3 段以内
 
 3. 方案 A 额外验证：在飞书编辑行为手册改一条规则 → 30 分钟后测试 → 确认生效
-

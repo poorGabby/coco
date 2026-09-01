@@ -198,10 +198,16 @@ export interface WikiSpace {
 
 export interface WikiNode {
   node_token: string;
-  obj_type: "doc" | "folder" | "shortcut";
+  obj_token?: string;
+  obj_type: "doc" | "docx" | "sheet" | "bitable" | "folder" | "shortcut";
   title: string;
+  space_id?: string;
   parent_node_token?: string;
   has_child?: boolean;
+}
+
+export interface WikiNodeDetail extends WikiNode {
+  space_id: string;
 }
 
 export interface WikiSearchResult {
@@ -287,6 +293,25 @@ export async function getDocumentRawContent(
     `/docx/v1/documents/${documentId}/raw_content`,
   )) as { data?: { content?: string } };
   return data.data?.content ?? "";
+}
+
+/**
+ * 通过 Wiki node/object token 解析节点归属。调用方必须自行校验 space_id；
+ * 该函数不吞掉权限或不存在错误，便于只读工具 fail closed。
+ */
+export async function getWikiNode(
+  env: Env,
+  token: string,
+): Promise<WikiNodeDetail> {
+  const data = (await feishuGet(
+    env,
+    `/wiki/v2/spaces/get_node?token=${encodeURIComponent(token)}`,
+  )) as { data?: { node?: WikiNodeDetail } };
+  const node = data.data?.node;
+  if (!node?.space_id || !node.node_token || !node.obj_type) {
+    throw new Error("Feishu Wiki node response is missing required fields");
+  }
+  return node;
 }
 
 /**
@@ -384,11 +409,7 @@ export async function getDocTitle(
   docToken: string,
 ): Promise<string> {
   try {
-    const data = (await feishuGet(
-      env,
-      `/wiki/v2/spaces/get_node?token=${docToken}`,
-    )) as { data?: { node?: { title: string } } };
-    return data.data?.node?.title ?? "";
+    return (await getWikiNode(env, docToken)).title ?? "";
   } catch {
     return "";
   }

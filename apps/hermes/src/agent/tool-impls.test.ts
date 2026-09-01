@@ -16,6 +16,7 @@ import {
 } from "./tool-impls.js";
 
 const FIXED_TODAY = "2026-07-13"; // 假定最近完结日
+const FIXED_NOW = new Date("2026-07-14T12:00:00.000Z");
 
 /** 造一个不联网的 executor：New_Users / All 段，含区间外的 7/05 与 7/13 干扰值。 */
 function fakeExecutor(overrides?: Partial<Record<string, Record<string, number>>>): AmplitudeExecutor {
@@ -45,7 +46,11 @@ function fakeExecutor(overrides?: Partial<Record<string, Record<string, number>>
 }
 
 test("对显式区间 7/6–7/12 求和，排除区间外日期", async () => {
-  const run = createFetchAmplitudeMetric({ execute: fakeExecutor(), today: () => FIXED_TODAY });
+  const run = createFetchAmplitudeMetric({
+    execute: fakeExecutor(),
+    today: () => FIXED_TODAY,
+    now: () => FIXED_NOW,
+  });
   const res = await run({ metricName: "New_Users", startDate: "2026-07-06", endDate: "2026-07-12" });
 
   assert.equal(res.grandSum, 10 + 20 + 30 + 40 + 50 + 60 + 70); // 280
@@ -54,6 +59,12 @@ test("对显式区间 7/6–7/12 求和，排除区间外日期", async () => {
   assert.ok(!("2026-07-05" in all.byDate), "应排除区间前一天");
   assert.ok(!("2026-07-13" in all.byDate), "应排除区间后一天");
   assert.equal(res.groupBy, null);
+  assert.equal(res.snapshot.contractVersion, "coco-data-contract.v1");
+  assert.equal(res.snapshot.metricVersion, "amplitude.New_Users.v1");
+  assert.equal(res.snapshot.tool, "fetch_amplitude_metric");
+  assert.deepEqual(res.snapshot.coverage, { startDate: "2026-07-06", endDate: "2026-07-12" });
+  assert.equal(res.snapshot.pulledAt, FIXED_NOW.toISOString());
+  assert.equal(res.snapshot.validation.status, "passed");
 });
 
 test("省略日期时默认最近 7 个完结日（endDate=today, start=today-6）", async () => {
@@ -112,6 +123,8 @@ test("endDate 晚于最近完结日时自动 clamp 并记 notes", async () => {
   const res = await run({ metricName: "New_Users", endDate: "2026-07-14" });
   assert.equal(res.endDate, FIXED_TODAY);
   assert.ok(res.notes?.some((n) => n.includes("自动改为")));
+  assert.equal(res.snapshot.validation.status, "warning");
+  assert.equal(res.snapshot.input.endDate, FIXED_TODAY);
 });
 
 test("超过最大区间被拒绝", async () => {
@@ -136,10 +149,10 @@ test("日期算术 helper", () => {
 
 const PRICES = { "9.99": 9.99, "6.99": 6.99 };
 const fakeTable: PurchaseProductTable = {
-  dates: ["2026-07-11", "2026-07-12", "2026-07-13"],
+  dates: ["2026-07-06", "2026-07-11", "2026-07-12", "2026-07-13"],
   products: {
-    "9.99": { "2026-07-11": 2, "2026-07-12": 4, "2026-07-13": 14 },
-    "6.99": { "2026-07-11": 0, "2026-07-12": 0, "2026-07-13": 4 },
+    "9.99": { "2026-07-06": 2, "2026-07-11": 2, "2026-07-12": 4, "2026-07-13": 14 },
+    "6.99": { "2026-07-06": 0, "2026-07-11": 0, "2026-07-12": 0, "2026-07-13": 4 },
   },
 };
 
@@ -156,18 +169,21 @@ test("revenueForDate: 缺失日返回 null", () => {
   assert.equal(revenueForDate(fakeTable, PRICES, "2026-07-01"), null);
 });
 
-test("fetchDailyRevenue: 默认单日 + 收入 DoD", async () => {
+test("fetchDailyRevenue: 默认单日 + 收入 WoW", async () => {
   const run = createFetchDailyRevenue({
     fetchTable: async () => fakeTable,
     prices: PRICES,
     today: () => "2026-07-13",
+    now: () => FIXED_NOW,
   });
   const res = await run({});
   assert.equal(res.startDate, "2026-07-13");
   assert.equal(res.endDate, "2026-07-13");
   assert.equal(res.totalRevenue, 167.82);
-  // 07-12 收入 = 4*9.99 = 39.96 → DoD = (167.82-39.96)/39.96 = 320.0%
-  assert.equal(res.dodPct, 320);
+  // 07-06 收入 = 2*9.99 = 19.98 → WoW = (167.82-19.98)/19.98 = 739.9%
+  assert.equal(res.wowPct, 739.9);
+  assert.equal(res.snapshot.metricVersion, "daily_revenue.amplitude-product-price.v1");
+  assert.equal(res.snapshot.completeness, "complete");
 });
 
 test("fetchDailyRevenue: 区间求和", async () => {
@@ -198,6 +214,7 @@ test("fetchDailyRevenue: endDate 晚于完结日时 clamp", async () => {
 function fakeStripeRange(): (s: string, e: string) => Promise<Map<string, StripeRevenueDay>> {
   const all: Record<string, StripeRevenueDay> = {
     "2026-07-11": { date: "2026-07-11", revenue: 19.98, count: 2, byPrice: { "9.99": 2 }, refunded: 0 },
+    "2026-07-06": { date: "2026-07-06", revenue: 19.98, count: 2, byPrice: { "9.99": 2 }, refunded: 0 },
     "2026-07-12": { date: "2026-07-12", revenue: 39.96, count: 4, byPrice: { "9.99": 4 }, refunded: 0 },
     "2026-07-13": { date: "2026-07-13", revenue: 167.82, count: 15, byPrice: { "9.99": 14, "6.99": 1 }, refunded: 0 },
   };
@@ -210,15 +227,20 @@ function fakeStripeRange(): (s: string, e: string) => Promise<Map<string, Stripe
   };
 }
 
-test("fetchStripeRevenue: 默认单日 + 收入 DoD", async () => {
-  const run = createFetchStripeRevenue({ fetchRange: fakeStripeRange(), today: () => "2026-07-13" });
+test("fetchStripeRevenue: 默认单日 + 收入 WoW", async () => {
+  const run = createFetchStripeRevenue({
+    fetchRange: fakeStripeRange(),
+    today: () => "2026-07-13",
+    now: () => FIXED_NOW,
+  });
   const res = await run({});
   assert.equal(res.endDate, "2026-07-13");
   assert.equal(res.totalRevenue, 167.82);
-  // 07-12=39.96 → DoD = (167.82-39.96)/39.96 = 320.0%
-  assert.equal(res.dodPct, 320);
+  // 07-06=19.98 → WoW = (167.82-19.98)/19.98 = 739.9%
+  assert.equal(res.wowPct, 739.9);
   assert.match(res.source, /Stripe/);
   assert.equal(res.perDay[0].byProduct["9.99"].users, 14);
+  assert.equal(res.snapshot.metricVersion, "daily_revenue.stripe.v1");
 });
 
 test("fetchStripeRevenue: 区间求和", async () => {
@@ -238,31 +260,34 @@ test("fetchStripeRevenue: endDate 晚于完结日时 clamp", async () => {
 // ── fetch_purchase_users（chart bh0r0h4o 同源）────────────────────────
 
 const fakeUsersTable: PurchaseUsersTable = {
-  dates: ["2026-07-11", "2026-07-12", "2026-07-13"],
-  byDate: { "2026-07-11": 0, "2026-07-12": 4, "2026-07-13": 15 },
+  dates: ["2026-07-05", "2026-07-06", "2026-07-11", "2026-07-12", "2026-07-13"],
+  byDate: { "2026-07-05": 0, "2026-07-06": 5, "2026-07-11": 0, "2026-07-12": 4, "2026-07-13": 15 },
 };
 
-test("fetchPurchaseUsers: 默认单日 + DoD", async () => {
+test("fetchPurchaseUsers: 默认单日 + WoW", async () => {
   const run = createFetchPurchaseUsers({
     fetchTable: async () => fakeUsersTable,
     today: () => "2026-07-13",
+    now: () => FIXED_NOW,
   });
   const res = await run({});
   assert.equal(res.endDate, "2026-07-13");
   assert.equal(res.perDay.length, 1);
   assert.equal(res.perDay[0].users, 15);
   assert.equal(res.sumOfDaily, 15);
-  assert.equal(res.dodPct, 275); // (15-4)/4
+  assert.equal(res.wowPct, 200); // (15-5)/5
+  assert.equal(res.snapshot.metricVersion, "purchase_users.amplitude-chart-bh0r0h4o.v1");
+  assert.equal(res.snapshot.completeness, "complete");
 });
 
-test("fetchPurchaseUsers: 前一日为 0 → DoD 为 N/A(null)", async () => {
+test("fetchPurchaseUsers: 上周同日为 0 → WoW 为 N/A(null)", async () => {
   const run = createFetchPurchaseUsers({
     fetchTable: async () => fakeUsersTable,
     today: () => "2026-07-13",
   });
-  const res = await run({ endDate: "2026-07-12" }); // 前一日 07-11 = 0
+  const res = await run({ endDate: "2026-07-12" }); // 上周同日 07-05 = 0
   assert.equal(res.perDay[0].users, 4);
-  assert.equal(res.dodPct, null);
+  assert.equal(res.wowPct, null);
 });
 
 test("fetchPurchaseUsers: 区间求和 + 跨日提示", async () => {
@@ -282,6 +307,8 @@ test("fetchPurchaseUsers: 窗口外日期给出缺列提示", async () => {
   });
   const res = await run({ startDate: "2026-07-09", endDate: "2026-07-13" });
   assert.ok(res.notes?.some((n) => n.includes("bh0r0h4o") && n.includes("2026-07-09")));
+  assert.equal(res.snapshot.completeness, "partial");
+  assert.equal(res.snapshot.validation.status, "warning");
 });
 
 test("fetchPurchaseUsers: endDate 晚于完结日时 clamp", async () => {

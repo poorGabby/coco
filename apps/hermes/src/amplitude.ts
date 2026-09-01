@@ -15,6 +15,7 @@ export type FetchChartOptions = {
   segmentPrefer?: RegExp;
 };
 export type ChartKind = "timeseries" | "retention" | "unknown";
+export type ComparisonKind = "WoW";
 
 export type ChartSnapshot = {
   chartId: string;
@@ -27,7 +28,11 @@ export type ChartSnapshot = {
   yesterdayValue: number | null;
   dayBeforeValue: number | null;
   changePct: number | null;
+  /** All formal core metrics use WoW. Retention changePct is a percentage-point delta. */
+  comparisonKind?: ComparisonKind;
   error?: string;
+  /** Existing standard data-layer snapshot metadata, when produced by a metric tool. */
+  snapshot?: import("./agent/tool-impls.js").DataSnapshotMeta;
 };
 
 type ParsedCsv = {
@@ -100,7 +105,7 @@ function parseChartCsv(csv: string): ParsedCsv {
 
   const headers = headerRow.slice(1);
   let dataRows = rows.filter((r) => r[0] === "None" && r.length > 1);
-  // Segmented charts (e.g. cjwne7be with 新用户/老用户 segments) have no "None" row.
+  // Segmented charts may have no "None" row.
   // Fall back to all rows that have numeric-looking values beyond the first column.
   if (dataRows.length === 0) {
     dataRows = rows.filter(
@@ -396,7 +401,7 @@ function extractRetention(
   });
   const label = labelParts.join(", ");
 
-  // Primary value: first non-Day-0 bracket / day for DoD comparison and report display
+  // Primary value retained for legacy chart parsing; formal comparisons are computed by standard snapshots.
   const nonZero = dayHeaders.filter((h) => !/day\s*0/i.test(h.header));
   const primary = nonZero.length > 0 ? nonZero[0] : dayHeaders[0];
   const value = toNumber(primary.rawValue);
@@ -613,13 +618,15 @@ async function fetchPurchaseChartCsv(
 export async function fetchAllChartSnapshots(
   env: Env,
   retentionPrevious?: Record<string, { yesterday: string; yesterdayValue: number }>,
+  options?: { includeMetricCharts?: boolean },
 ): Promise<ChartSnapshot[]> {
   const results: ChartSnapshot[] = [];
   const yesterday = amplitudeDateStr(-1);
   const dayBefore = amplitudeDateStr(-2);
 
   // ── 1. Dashboard 对齐：按注册表逐张拉 Chart CSV（写死 id，非 Segmentation）──
-  const charts: DailyChartDef[] = resolveDailyCharts(env.amplitudeDailyChartIds);
+  const charts: DailyChartDef[] = resolveDailyCharts(env.amplitudeDailyChartIds)
+    .filter((chart) => options?.includeMetricCharts !== false || chart.kind === "retention");
   for (const chart of charts) {
     try {
       const snapshot = await fetchChartSnapshotLegacy(
@@ -656,6 +663,7 @@ export async function fetchAllChartSnapshots(
   }
 
   // ── 2. Purchase by Product（仅供 Stripe 失败时 deriveRevenue；卡片会滤掉 purchases/*）──
+  if (options?.includeMetricCharts === false) return results;
   try {
     results.push(...(await fetchPurchaseChartCsv(env, yesterday, dayBefore)));
   } catch (err) {

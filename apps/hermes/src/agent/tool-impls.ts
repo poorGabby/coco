@@ -18,9 +18,85 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** 单次查询允许的最大跨度（daysBetween 口径，即差值天数）。 */
 export const DEFAULT_MAX_RANGE_DAYS = 92;
+export const DATA_CONTRACT_VERSION = "coco-data-contract.v1";
 
 /** 可注入的取数执行器；默认由 AmplitudeSkill 实现。 */
 export type AmplitudeExecutor = (input: AmplitudeQueryInput) => Promise<AmplitudeSkillOutput>;
+
+export type DataCompleteness = "complete" | "partial" | "empty";
+export type DataValidationStatus = "passed" | "warning";
+
+export interface DataSnapshotMeta {
+  /** Stable contract version for the shape and semantics of this tool output. */
+  contractVersion: string;
+  /** Metric definition version; bump when the business definition changes. */
+  metricVersion: string;
+  /** Stable tool/script name that produced this snapshot. */
+  tool: string;
+  /** User-facing metric name, after alias resolution. */
+  metric: string;
+  /** Canonical metric name (explicit alias retained alongside legacy `metric`). */
+  metricName: string;
+  /** Fixed formal Amplitude Chart ID, when the source is a saved Chart. */
+  chartId: string | null;
+  /** Normalized input actually used by the query, never the raw LLM text. */
+  input: Record<string, unknown>;
+  /** Data source and fixed query definition. */
+  source: string;
+  timezone: "America/Denver";
+  coverage: { startDate: string; endDate: string };
+  pulledAt: string;
+  /** ISO fetch time (explicit alias retained alongside legacy `pulledAt`). */
+  fetchedAt: string;
+  completeness: DataCompleteness;
+  validation: { status: DataValidationStatus; checks: string[] };
+  /** Daily metric comparison fields; all values come from the same Chart response. */
+  currentDate?: string;
+  currentValue?: number | null;
+  comparisonDate?: string;
+  comparisonValue?: number | null;
+  wowChange?: number | null;
+  /** Explicit Retention value/comparison semantics. */
+  valueScope?: "overall-combined";
+  wowScope?: "single-cohort-week-over-week";
+  /** Legacy retention cohort fields. Formal overall/combined retention leaves these unset. */
+  currentCohort?: string;
+  comparisonCohort?: string;
+  /** Retention-only audit fields. Null values are explicit when the business definition is unresolved. */
+  retention?: {
+    cohortDate: string | null;
+    /** Formal Breakdown Table scope. */
+    scope?: "overall-combined";
+    currentPeriod?: { startDate: string; endDate: string } | null;
+    comparisonPeriod?: { startDate: string; endDate: string } | null;
+    /** Availability of a future previous-overall comparison, independent of cohort WoW. */
+    overallComparisonAvailability?: "available" | "unavailable";
+    valueScope?: "overall-combined";
+    wowScope?: "single-cohort-week-over-week";
+    currentCohort?: string | null;
+    comparisonCohort?: string | null;
+    calculation: "n-day" | "rolling" | "bracket" | "unresolved";
+    points: Record<"D1" | "D3" | "D7", {
+      numerator: number | null;
+      denominator: number | null;
+      rate: number | null;
+      currentValue?: number | null;
+      mature: boolean;
+      /** WoW-only current cohort fields; never used as the headline value. */
+      wowCurrentNumerator?: number | null;
+      wowCurrentDenominator?: number | null;
+      wowCurrentRate?: number | null;
+      comparisonNumerator?: number | null;
+      comparisonDenominator?: number | null;
+      comparisonRate?: number | null;
+      comparisonValue?: number | null;
+      comparisonMature?: boolean;
+      wowChange?: number | null;
+      wowChangePp?: number | null;
+    }>;
+    maturityRule: string;
+  };
+}
 
 export interface FetchMetricInput {
   metricName: string;
@@ -54,13 +130,49 @@ export interface FetchMetricResult {
   source: string;
   /** 口径/异常提示（如全 0 疑似日期填错），供模型自我纠偏 */
   notes?: string[];
+  snapshot: DataSnapshotMeta;
 }
 
 export interface FetchAmplitudeMetricDeps {
   execute: AmplitudeExecutor;
   /** 返回「最近一个完结的 Denver 日」YYYY-MM-DD（默认 amplitudeDateStr(-1)）。 */
   today: () => string;
+  now?: () => Date;
   maxRangeDays?: number;
+}
+
+function buildSnapshotMeta(opts: {
+  tool: string;
+  metric: string;
+  metricVersion: string;
+  input: Record<string, unknown>;
+  source: string;
+  startDate: string;
+  endDate: string;
+  pulledAt: Date;
+  completeness: DataCompleteness;
+  checks: string[];
+  notes: string[];
+}): DataSnapshotMeta {
+  return {
+    contractVersion: DATA_CONTRACT_VERSION,
+    metricVersion: opts.metricVersion,
+    tool: opts.tool,
+    metric: opts.metric,
+    metricName: opts.metric,
+    chartId: null,
+    input: opts.input,
+    source: opts.source,
+    timezone: "America/Denver",
+    coverage: { startDate: opts.startDate, endDate: opts.endDate },
+    pulledAt: opts.pulledAt.toISOString(),
+    fetchedAt: opts.pulledAt.toISOString(),
+    completeness: opts.completeness,
+    validation: {
+      status: opts.notes.length ? "warning" : "passed",
+      checks: opts.checks,
+    },
+  };
 }
 
 /** 纯函数：日期 +n 天（UTC midnight 计算，避免时区漂移）。 */
@@ -169,6 +281,7 @@ export function createFetchAmplitudeMetric(deps: FetchAmplitudeMetricDeps) {
       );
     }
 
+    const source = `Amplitude 产品分析（segmentation API），指标 ${input.metricName}，时区 America/Denver`;
     return {
       metricName: input.metricName,
       startDate,
@@ -176,8 +289,25 @@ export function createFetchAmplitudeMetric(deps: FetchAmplitudeMetricDeps) {
       groupBy: input.groupByProp ?? null,
       grandSum,
       series,
-      source: `Amplitude 产品分析（segmentation API），指标 ${input.metricName}，时区 America/Denver`,
+      source,
       notes: notes.length ? notes : undefined,
+      snapshot: buildSnapshotMeta({
+        tool: "fetch_amplitude_metric",
+        metric: input.metricName,
+        metricVersion: `amplitude.${input.metricName}.v1`,
+        input: { metricName: input.metricName, startDate, endDate, groupByProp: input.groupByProp ?? null },
+        source,
+        startDate,
+        endDate,
+        pulledAt: deps.now?.() ?? new Date(),
+        completeness: grandSum === 0 ? "empty" : "complete",
+        checks: [
+          "metric is registered",
+          "date range is normalized to completed Denver days",
+          "range length is within maxRangeDays",
+        ],
+        notes,
+      }),
     };
   };
 }
@@ -197,10 +327,11 @@ export interface FetchRevenueResult {
   prices: Record<string, number>;
   perDay: RevenueDay[];
   totalRevenue: number;
-  /** endDate vs 前一自然日的收入 DoD（%）；基期为 0 或缺失时为 null（=N/A） */
-  dodPct: number | null;
+  /** endDate vs 7 天前同日的收入 WoW（%）；基期为 0 或缺失时为 null（=N/A） */
+  wowPct: number | null;
   source: string;
   notes?: string[];
+  snapshot: DataSnapshotMeta;
 }
 
 export interface FetchRevenueInput {
@@ -246,10 +377,12 @@ export function revenueForDate(
 }
 
 export interface FetchDailyRevenueDeps {
-  fetchTable: () => Promise<PurchaseProductTable>;
+  fetchTable?: () => Promise<PurchaseProductTable>;
+  execute?: AmplitudeExecutor;
   prices: Record<string, number>;
   /** 最近一个完结的 Denver 日 YYYY-MM-DD */
   today: () => string;
+  now?: () => Date;
   maxRangeDays?: number;
 }
 
@@ -281,14 +414,53 @@ export function createFetchDailyRevenue(deps: FetchDailyRevenueDeps) {
       throw new Error(`date range ${span}d exceeds max ${maxRangeDays}d`);
     }
 
-    const table = await deps.fetchTable();
-    const perDay = computeRevenue(table, deps.prices, startDate, endDate);
+    let perDay: RevenueDay[];
+    let revEnd: number | null;
+    let revPrev: number | null;
+    if (deps.execute) {
+      const output = await deps.execute({
+        metricName: "Purchase_Completed",
+        startDate: addDays(startDate, -7),
+        endDate,
+        groupByProp: "product",
+        groupByType: "event",
+      });
+      const rows = new Map<string, RevenueDay>();
+      for (const [product, segment] of Object.entries(output.segments)) {
+        const price = deps.prices[product];
+        if (price == null) continue;
+        for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
+          const users = segment.dailyTrend[d] ?? 0;
+          const day = rows.get(d) ?? { date: d, byProduct: {}, revenue: 0 };
+          day.byProduct[product] = { users, revenue: round2(users * price) };
+          day.revenue = round2(day.revenue + users * price);
+          rows.set(d, day);
+        }
+      }
+      perDay = [...rows.values()].sort((a, b) => a.date.localeCompare(b.date));
+      revEnd = perDay.find((d) => d.date === endDate)?.revenue ?? null;
+      const comparisonDate = addDays(endDate, -7);
+      revPrev = 0;
+      let hasComparison = false;
+      for (const [product, segment] of Object.entries(output.segments)) {
+        const price = deps.prices[product];
+        const users = segment.dailyTrend[comparisonDate];
+        if (price == null || users == null) continue;
+        revPrev += users * price;
+        hasComparison = true;
+      }
+      revPrev = hasComparison ? round2(revPrev) : null;
+    } else {
+      if (!deps.fetchTable) throw new Error("fetchTable or execute is required");
+      const table = await deps.fetchTable();
+      perDay = computeRevenue(table, deps.prices, startDate, endDate);
+      revEnd = revenueForDate(table, deps.prices, endDate);
+      revPrev = revenueForDate(table, deps.prices, addDays(endDate, -7));
+    }
     const totalRevenue = round2(perDay.reduce((acc, d) => acc + d.revenue, 0));
 
-    // DoD：endDate vs 前一自然日（取全表，不受请求区间限制）；基期 0/缺失 → null
-    const revEnd = revenueForDate(table, deps.prices, endDate);
-    const revPrev = revenueForDate(table, deps.prices, addDays(endDate, -1));
-    const dodPct =
+    // WoW：endDate vs 7 天前同日（取全表，不受请求区间限制）；基期 0/缺失 → null
+    const wowPct =
       revEnd != null && revPrev != null && revPrev > 0
         ? Math.round(((revEnd - revPrev) / revPrev) * 1000) / 10
         : null;
@@ -301,15 +473,38 @@ export function createFetchDailyRevenue(deps: FetchDailyRevenueDeps) {
       .map(([label, v]) => `$${v}×${label}人数`)
       .join(" + ");
 
+    const source = deps.execute
+      ? `Amplitude Segmentation API（purchase_completed 按 product 分组 uniques），Daily Revenue = ${priceStr}，时区 America/Denver`
+      : `Amplitude 保存图表 xhd4uffg（purchase_completed 按 product 分档去重人数），Daily Revenue = ${priceStr}，时区 America/Denver`;
     return {
       startDate,
       endDate,
       prices: deps.prices,
       perDay,
       totalRevenue,
-      dodPct,
-      source: `Amplitude 保存图表 xhd4uffg（purchase_completed 按 product 分档去重人数），Daily Revenue = ${priceStr}，与日报同源，时区 America/Denver`,
+      wowPct,
+      source,
       notes: notes.length ? notes : undefined,
+      snapshot: buildSnapshotMeta({
+        tool: "fetch_daily_revenue",
+        metric: "Daily_Revenue",
+        metricVersion: deps.execute
+          ? "daily_revenue.amplitude-product-price-segmentation.v2"
+          : "daily_revenue.amplitude-product-price.v1",
+        input: { startDate, endDate },
+        source,
+        startDate,
+        endDate,
+        pulledAt: deps.now?.() ?? new Date(),
+        completeness: perDay.length === 0 ? "empty" : "complete",
+        checks: [
+          "date range is normalized to completed Denver days",
+          "range length is within maxRangeDays",
+          "revenue is computed from fixed product price table",
+          ...(deps.execute ? ["purchase_completed is queried through the standard Amplitude metric executor"] : []),
+        ],
+        notes,
+      }),
     };
   };
 }
@@ -330,6 +525,7 @@ export interface FetchStripeRevenueDeps {
   fetchRange: (startDate: string, endDate: string) => Promise<Map<string, StripeRevenueDay>>;
   /** 最近一个完结的 Denver 日 YYYY-MM-DD */
   today: () => string;
+  now?: () => Date;
   maxRangeDays?: number;
 }
 
@@ -361,8 +557,8 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
       throw new Error(`date range ${span}d exceeds max ${maxRangeDays}d`);
     }
 
-    // DoD 需要 endDate 前一日，故多取一天
-    const map = await deps.fetchRange(addDays(startDate, -1), endDate);
+    // WoW 需要 endDate 之前 7 天，故扩展查询窗口
+    const map = await deps.fetchRange(addDays(startDate, -7), endDate);
     const perDay: RevenueDay[] = [];
     for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
       const day = map.get(d);
@@ -377,8 +573,8 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
     const totalRevenue = round2(perDay.reduce((acc, d) => acc + d.revenue, 0));
 
     const revEnd = map.get(endDate)?.revenue ?? 0;
-    const revPrev = map.get(addDays(endDate, -1))?.revenue;
-    const dodPct =
+    const revPrev = map.get(addDays(endDate, -7))?.revenue;
+    const wowPct =
       revPrev != null && revPrev > 0
         ? Math.round(((revEnd - revPrev) / revPrev) * 1000) / 10
         : null;
@@ -388,16 +584,34 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
       notes.push(`Stripe 在 ${startDate}~${endDate} 无成交入账，请核对日期/年份是否正确。`);
     }
 
+    const source =
+      "Stripe 真实支付流水（succeeded 入账金额，已扣退款），按 America/Denver 自然日归集，与日报 Daily Revenue 同源";
     return {
       startDate,
       endDate,
       prices: {},
       perDay,
       totalRevenue,
-      dodPct,
-      source:
-        "Stripe 真实支付流水（succeeded 入账金额，已扣退款），按 America/Denver 自然日归集，与日报 Daily Revenue 同源",
+      wowPct,
+      source,
       notes: notes.length ? notes : undefined,
+      snapshot: buildSnapshotMeta({
+        tool: "fetch_daily_revenue",
+        metric: "Daily_Revenue",
+        metricVersion: "daily_revenue.stripe.v1",
+        input: { startDate, endDate },
+        source,
+        startDate,
+        endDate,
+        pulledAt: deps.now?.() ?? new Date(),
+        completeness: totalRevenue === 0 ? "empty" : "complete",
+        checks: [
+          "date range is normalized to completed Denver days",
+          "range length is within maxRangeDays",
+          "Stripe revenue is sourced from succeeded paid charges net of refunds",
+        ],
+        notes,
+      }),
     };
   };
 }
@@ -416,10 +630,11 @@ export interface FetchPurchaseUsersResult {
   perDay: PurchaseUsersDay[];
   /** 区间内每日去重人数之和（跨日会重复计同一人，问单日时即当日值） */
   sumOfDaily: number;
-  /** endDate vs 前一自然日的 DoD（%）；基期为 0/缺失时为 null(=N/A) */
-  dodPct: number | null;
+  /** endDate vs 7 天前同日的 WoW（%）；基期为 0/缺失时为 null(=N/A) */
+  wowPct: number | null;
   source: string;
   notes?: string[];
+  snapshot: DataSnapshotMeta;
 }
 
 export interface FetchPurchaseUsersInput {
@@ -428,16 +643,17 @@ export interface FetchPurchaseUsersInput {
 }
 
 export interface FetchPurchaseUsersDeps {
-  fetchTable: () => Promise<PurchaseUsersTable>;
+  fetchTable?: () => Promise<PurchaseUsersTable>;
+  execute?: AmplitudeExecutor;
   /** 最近一个完结的 Denver 日 YYYY-MM-DD */
   today: () => string;
+  now?: () => Date;
   maxRangeDays?: number;
 }
 
 /**
- * 工厂：购买去重人数工具。数据取自保存图表 bh0r0h4o（purchase_completed 无分组
- * 去重付费用户），与 Amplitude 网页图表、日报走的 xhd4uffg 同属图表引擎口径，
- * 数值与 UI 一致（≠ Segmentation API，后者口径偏低）。
+ * 工厂：购买去重人数工具。生产路径使用标准 Amplitude metric executor；
+ * fetchTable 仅保留给旧单测/兼容调用，不作为生产日报或问答口径。
  */
 export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
   const maxRangeDays = deps.maxRangeDays ?? DEFAULT_MAX_RANGE_DAYS;
@@ -465,32 +681,49 @@ export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
       throw new Error(`date range ${span}d exceeds max ${maxRangeDays}d`);
     }
 
-    const table = await deps.fetchTable();
-    const inWindow = table.dates.filter((d) => d >= startDate && d <= endDate).sort();
-    const perDay: PurchaseUsersDay[] = inWindow.map((date) => ({
-      date,
-      users: table.byDate[date] ?? null,
-    }));
+    let perDay: PurchaseUsersDay[];
+    let missing: string[] = [];
+    let fallbackTable: PurchaseUsersTable | undefined;
+    let comparisonValue: number | null = null;
+    if (deps.execute) {
+      const output = await deps.execute({
+        metricName: "Purchase_Completed",
+        startDate: addDays(startDate, -7),
+        endDate,
+      });
+      const segment = output.segments["(none)"] ?? output.segments["All"] ?? Object.values(output.segments)[0];
+      comparisonValue = segment?.dailyTrend[addDays(endDate, -7)] ?? null;
+      perDay = [];
+      for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
+        perDay.push({ date: d, users: segment?.dailyTrend[d] ?? null });
+        if (segment?.dailyTrend[d] == null) missing.push(d);
+      }
+    } else {
+      if (!deps.fetchTable) throw new Error("fetchTable or execute is required");
+      const table = await deps.fetchTable();
+      fallbackTable = table;
+      const comparisonDate = addDays(endDate, -7);
+      comparisonValue = table.dates.includes(comparisonDate) ? table.byDate[comparisonDate] : null;
+      const inWindow = table.dates.filter((d) => d >= startDate && d <= endDate).sort();
+      perDay = inWindow.map((date) => ({ date, users: table.byDate[date] ?? null }));
+      for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
+        if (!table.dates.includes(d)) missing.push(d);
+      }
+    }
     const sumOfDaily = perDay.reduce((acc, d) => acc + (d.users ?? 0), 0);
 
-    const endVal = table.dates.includes(endDate) ? table.byDate[endDate] : null;
-    const prevDate = addDays(endDate, -1);
-    const prevVal = table.dates.includes(prevDate) ? table.byDate[prevDate] : null;
-    const dodPct =
-      endVal != null && prevVal != null && prevVal > 0
-        ? Math.round(((endVal - prevVal) / prevVal) * 1000) / 10
+    const endVal = fallbackTable
+      ? (fallbackTable.dates.includes(endDate) ? fallbackTable.byDate[endDate] : null)
+      : perDay.find((d) => d.date === endDate)?.users ?? null;
+    const wowPct =
+      endVal != null && comparisonValue != null && comparisonValue > 0
+        ? Math.round(((endVal - comparisonValue) / comparisonValue) * 1000) / 10
         : null;
 
     const notes: string[] = [...resolved.notes];
-    // bh0r0h4o 是 Last-30-Days 滚动图表；请求区间超出图表覆盖时会缺列。
-    const missing = [];
-    for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
-      if (!table.dates.includes(d)) missing.push(d);
-    }
     if (missing.length) {
       notes.push(
-        `图表 bh0r0h4o 只覆盖最近约 30 天，缺少日期列：${missing.join(", ")}。` +
-          `更早的历史购买人数本图表无法提供。`,
+        `${deps.execute ? "缺少日期数据列" : "图表 bh0r0h4o 缺少日期列"}：${missing.join(", ")}。`,
       );
     }
     if (span > 0) {
@@ -499,16 +732,36 @@ export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
       );
     }
 
+    const source = deps.execute
+      ? "Amplitude Segmentation API（purchase_completed 无分组 uniques），时区 America/Denver"
+      : "Amplitude 保存图表 bh0r0h4o（兼容路径），时区 America/Denver";
     return {
       startDate,
       endDate,
       perDay,
       sumOfDaily,
-      dodPct,
-      source:
-        "Amplitude 保存图表 bh0r0h4o（Purchase Completed — Unique Users，purchase_completed 无分组去重），" +
-        "与 Amplitude 网页图表 / 日报（xhd4uffg）同属图表引擎口径，时区 America/Denver",
+      wowPct,
+      source,
       notes: notes.length ? notes : undefined,
+      snapshot: buildSnapshotMeta({
+        tool: "fetch_purchase_users",
+        metric: "Purchase_Users",
+        metricVersion: deps.execute
+          ? "purchase_users.amplitude-purchase_completed.v2"
+          : "purchase_users.amplitude-chart-bh0r0h4o.v1",
+        input: { startDate, endDate },
+        source,
+        startDate,
+        endDate,
+        pulledAt: deps.now?.() ?? new Date(),
+        completeness: missing.length ? "partial" : sumOfDaily === 0 ? "empty" : "complete",
+        checks: [
+          "date range is normalized to completed Denver days",
+          "range length is within maxRangeDays",
+          "missing dates are reported instead of substituted",
+        ],
+        notes,
+      }),
     };
   };
 }

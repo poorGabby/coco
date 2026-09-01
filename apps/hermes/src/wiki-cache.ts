@@ -40,6 +40,8 @@ export interface SearchResult {
   snippet: string;
   /** 文档链接 */
   url: string;
+  /** Wiki node token */
+  nodeToken: string;
   /** 空间名称 */
   spaceName: string;
   /** 匹配得分 */
@@ -53,6 +55,13 @@ let lastLoadTime = 0;
 let loading = false;
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 分钟刷新
 let loadedTokenSet = new Set<string>(); // 已加载过的 token，用于检测新增文档
+
+// MCP 知识搜索专用缓存：只允许来自 FEISHU_WIKI_SPACE_IDS 自动枚举的节点，
+// 不混入 FEISHU_WIKI_DOC_TOKENS / 索引文档 / extraTokens。
+let allowlistedSections: WikiSection[] = [];
+let allowlistedCacheKey = "";
+let allowlistedLastLoadTime = 0;
+let allowlistedLoading: Promise<void> | null = null;
 
 // ── 加载文档 ──────────────────────────────────────────────────────
 
@@ -245,6 +254,68 @@ export async function refreshWikiCache(env: Env): Promise<void> {
   await ensureWikiCache(env);
 }
 
+/**
+ * 加载固定 Wiki allowlist。任一 space 无法枚举时直接失败，绝不扩大到其他来源。
+ * 正文仍复用现有 loadOneDoc 与 30 分钟缓存策略。
+ */
+async function ensureAllowlistedWikiCache(env: Env): Promise<void> {
+  const spaceIds = [...new Set(env.feishuWikiSpaceIds.map((id) => id.trim()).filter(Boolean))];
+  if (!spaceIds.length) {
+    throw new Error("FEISHU_WIKI_SPACE_IDS is required for fixed Wiki search");
+  }
+  const cacheKey = [...spaceIds].sort().join(",");
+  const now = Date.now();
+  if (
+    allowlistedCacheKey === cacheKey &&
+    allowlistedSections.length > 0 &&
+    now - allowlistedLastLoadTime < CACHE_TTL_MS
+  ) {
+    return;
+  }
+  if (allowlistedLoading) {
+    await allowlistedLoading;
+    if (allowlistedCacheKey === cacheKey && allowlistedSections.length > 0) return;
+  }
+
+  allowlistedLoading = (async () => {
+    const discovered: Array<{ token: string; spaceName: string }> = [];
+    for (const spaceId of spaceIds) {
+      // 不 catch：空间不可访问时 fail closed，避免静默返回不完整/不同范围的数据。
+      const docs = await listAllWikiDocs(env, spaceId);
+      for (const doc of docs) {
+        discovered.push({ token: doc.node_token, spaceName: `Wiki ${spaceId}` });
+      }
+    }
+    const unique = [...new Map(discovered.map((item) => [item.token, item])).values()];
+    if (!unique.length) throw new Error("No readable documents found in FEISHU_WIKI_SPACE_IDS");
+
+    const loaded: WikiSection[][] = [];
+    const batchSize = 5;
+    for (let i = 0; i < unique.length; i += batchSize) {
+      const batch = unique.slice(i, i + batchSize);
+      loaded.push(...await Promise.all(
+        batch.map((item) => loadOneDoc(env, item.token, item.spaceName)),
+      ));
+    }
+    const nextSections = loaded.flat();
+    if (!nextSections.length) {
+      throw new Error("Documents in FEISHU_WIKI_SPACE_IDS have no readable cached content");
+    }
+    // 完整加载成功后再原子替换，失败时不污染上一份缓存。
+    allowlistedSections = nextSections;
+    allowlistedCacheKey = cacheKey;
+    allowlistedLastLoadTime = Date.now();
+    console.log(
+      `[wiki-cache] Fixed allowlist: loaded ${nextSections.length} sections from ${unique.length} docs`,
+    );
+  })();
+  try {
+    await allowlistedLoading;
+  } finally {
+    allowlistedLoading = null;
+  }
+}
+
 /** 获取缓存统计 */
 export function wikiCacheStats(): { sections: number; docs: number; ageMs: number } {
   const docTokens = new Set(sections.map((s) => s.nodeToken));
@@ -283,19 +354,35 @@ function tokenize(text: string): string[] {
   return [...new Set(tokens)];
 }
 
+/** 工具输出层兜底脱敏；保留字段名和上下文，但不把凭据值交给模型。 */
+export function redactKnowledgeSecrets(text: string): string {
+  return text.replace(
+    /((?:密码|password|api[_ -]?key|app[_ -]?secret|access[_ -]?token)\s*[：:=]\s*)([^\s,，;；\n]+)/gi,
+    "$1[REDACTED]",
+  );
+}
+
 /** 全文搜索：在所有文档段落中匹配关键词 */
 export function searchFulltext(
   query: string,
   maxResults = 10,
 ): SearchResult[] {
-  if (!query.trim() || !sections.length) return [];
+  return searchSections(sections, query, maxResults);
+}
+
+function searchSections(
+  sourceSections: WikiSection[],
+  query: string,
+  maxResults: number,
+): SearchResult[] {
+  if (!query.trim() || !sourceSections.length) return [];
 
   const keywords = tokenize(query);
   if (!keywords.length) return [];
 
   // 对每个段落打分：关键词在 heading + content 中的命中次数
-  const scored = sections.map((sec) => {
-    const searchText = (sec.heading + " " + sec.content).toLowerCase();
+  const scored = sourceSections.map((sec) => {
+    const searchText = (sec.docTitle + " " + sec.heading + " " + sec.content).toLowerCase();
     let score = 0;
     for (const kw of keywords) {
       let idx = -1;
@@ -330,9 +417,20 @@ export function searchFulltext(
   return top.map(({ section, score }) => ({
     heading: section.heading,
     docTitle: section.docTitle,
-    snippet: section.content,
+    snippet: redactKnowledgeSecrets(section.content),
     url: `https://jcnreneadm7i.feishu.cn/wiki/${section.nodeToken}`,
+    nodeToken: section.nodeToken,
     spaceName: section.spaceName,
     score,
   }));
+}
+
+/** 标题 + 正文搜索，仅覆盖 FEISHU_WIKI_SPACE_IDS 自动发现的固定文档。 */
+export async function searchAllowlistedWikiFulltext(
+  env: Env,
+  query: string,
+  maxResults = 10,
+): Promise<SearchResult[]> {
+  await ensureAllowlistedWikiCache(env);
+  return searchSections(allowlistedSections, query, maxResults);
 }

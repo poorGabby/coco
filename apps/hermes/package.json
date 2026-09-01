@@ -9,7 +9,7 @@
     "report": "tsx src/cli.ts report",
     "ask": "tsx src/cli.ts ask",
     "test:amplitude": "tsx src/cli.ts test-amplitude",
-    "test:agent": "node --import tsx --test src/agent/tool-impls.test.ts src/agent/mcp/registry.test.ts src/daily-charts.test.ts"
+    "test:agent": "node --import tsx --test src/agent/tool-impls.test.ts src/agent/mcp/registry.test.ts src/comparison.test.ts src/daily-charts.test.ts src/feishu-knowledge.test.ts src/metric-definitions.test.ts src/report.test.ts src/standard-chart-metrics.test.ts src/stripe-purchases.test.ts src/takeover-version.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

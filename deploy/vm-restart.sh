@@ -11,20 +11,20 @@ DD="${HERMES_DATA_DIR:-$HOME/hermes-data}"
 IMG="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}:latest"
 DOCKER_CONFIG=/tmp/hermes-dockercfg
 
-mkdir -p "$DD" "$DOCKER_CONFIG"
+mkdir -p "$DOCKER_CONFIG"
+sudo mkdir -p "$DD"
 
-if [[ -f "$DD/config.yaml" ]]; then
+if sudo test -f "$DD/config.yaml"; then
   ts="$(date +%Y%m%d-%H%M%S)"
-  cp "$DD/config.yaml" "$DD/config.yaml.bak-$ts"
-  ls -1t "$DD"/config.yaml.bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f
+  sudo cp "$DD/config.yaml" "$DD/config.yaml.bak-$ts"
 fi
 
 if [[ -f "$HOME/config.yaml" ]]; then
-  cp "$HOME/config.yaml" "$DD/config.yaml"
+  sudo cp "$HOME/config.yaml" "$DD/config.yaml"
 fi
 
 sudo chown -R 10000:10000 "$DD"
-chmod 600 "$DD/.env" 2>/dev/null || true
+sudo chmod 600 "$DD/.env" 2>/dev/null || true
 
 TOKEN="$(curl -sf -H 'Metadata-Flavor: Google' \
   'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \

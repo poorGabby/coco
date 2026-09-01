@@ -26,7 +26,7 @@
 
 ## 关键洞察：用 MCP 复用我们已有的 TS 代码（不用重写）
 
-CoCo 的领域价值（Amplitude/Stripe 取数 + DoD/口径 + 日报组装）现在是 TypeScript。
+CoCo 的领域价值（Amplitude 正式 Chart 取数 + WoW 口径 + 日报组装）现在是 TypeScript。
 **不必重写成 Python**——把它们包成一个 **MCP server**（我们刚做完 MCP client，反向做 server 很对称），
 hermes-agent 作为"大脑 + 飞书网关"通过 MCP 调用它。这样：
 

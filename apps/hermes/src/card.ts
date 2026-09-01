@@ -1,5 +1,6 @@
 import type { ChartSnapshot } from "./amplitude.js";
 import type { DailyAnalysis } from "./analyze.js";
+import type { DailyPurchaseCounts } from "./report.js";
 
 function formatNumber(value: number | null): string {
   if (value == null) return "—";
@@ -12,7 +13,7 @@ function formatPct(value: number | null): string {
     const sign = value > 0 ? "+" : "";
     return `${sign}${value.toFixed(1)}%`;
   }
-  // 基期为 0（含收入前日 $0）等无法计算 DoD 的情况 → N/A
+  // 基期为 0 等无法计算 WoW 的情况 → N/A
   return "N/A";
 }
 
@@ -20,17 +21,45 @@ function snapshotLine(s: ChartSnapshot): string {
   if (s.error) {
     return `• **${s.title}**: ⚠️ 拉取失败`;
   }
-  const val = s.kind === "retention" && s.yesterday ? s.yesterday : formatNumber(s.yesterdayValue);
-  return `• **${s.title}**: ${val}  (DoD ${formatPct(s.changePct)})`;
+  if (s.kind === "retention" && s.snapshot?.retention) {
+    const retention = s.snapshot.retention;
+    return (["D1", "D3", "D7"] as const).map((day) => {
+      const point = retention.points[day];
+      const rate = point.rate == null ? "—" : `${(point.rate * 100).toFixed(2)}%`;
+      const pp = point.wowChangePp;
+      const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(2)}pp`;
+      return `• **${s.title} — Day ${day.slice(1)}**: ${rate}  (${wow})`;
+    }).join("\n");
+  }
+  return `• **${s.title}**: ${formatNumber(s.yesterdayValue)}  (WoW ${formatPct(s.changePct)})`;
 }
 
-function buildMetricsMarkdown(snapshots: ChartSnapshot[]): string {
-  const lines = snapshots.map(snapshotLine);
+function buildMetricsMarkdown(snapshots: ChartSnapshot[], purchase?: DailyPurchaseCounts): string {
+  const purchaseUsers = snapshots.find((s) => s.snapshot?.metricName === "Purchase_Users");
+  const revenue = snapshots.find((s) => s.snapshot?.metricName === "Daily_Revenue");
+  const combinedRevenue = revenue && purchase && revenue.yesterdayValue != null
+    ? `$${(revenue.yesterdayValue + purchase.stripeRevenue).toFixed(2)} (WoW ${purchaseWowForDisplay(revenue, purchase)})`
+    : "$— (WoW N/A)";
+  const lines = [
+    `• **Purchasers** — First Purchase ${formatNumber(purchaseUsers?.yesterdayValue ?? null)} (${formatPct(purchaseUsers?.changePct ?? null)})` +
+      (purchase ? ` | Second Adoption ${purchase.secondPet} (${formatPct(purchase.secondPetWow)}) | Treats ${purchase.treats} (${formatPct(purchase.treatsWow)}): Pocket ${purchase.pocket} / Stash ${purchase.stash} / Big Bag ${purchase.bigBag}` : " | Second Adoption — (N/A) | Treats — (N/A): Pocket — / Stash — / Big Bag —"),
+    `• **Daily Revenue:** ${combinedRevenue}`,
+    ...snapshots.filter((s) => s !== purchaseUsers && s !== revenue).map(snapshotLine),
+  ];
   const errorCount = snapshots.filter((s) => s.error).length;
   if (errorCount > 0) {
     lines.push("", `⚠️ ${errorCount} 项指标拉取失败，请检查 Amplitude 配置。`);
   }
   return lines.join("\n");
+}
+
+function purchaseWowForDisplay(revenue: ChartSnapshot, purchase: DailyPurchaseCounts): string {
+  if (revenue.dayBeforeValue == null) return "N/A";
+  const current = revenue.yesterdayValue! + purchase.stripeRevenue;
+  const previous = revenue.dayBeforeValue + purchase.stripePreviousRevenue;
+  if (previous === 0) return "N/A";
+  const wow = Math.round(((current - previous) / previous) * 1000) / 10;
+  return `${wow > 0 ? "+" : ""}${wow.toFixed(1)}%`;
 }
 
 // ── 飞书卡片 JSON 2.0 组件 helper ──
@@ -65,6 +94,7 @@ export function buildDailyCard(
   analysis: DailyAnalysis,
   snapshots: ChartSnapshot[],
   dateLabel: string,
+  purchase?: DailyPurchaseCounts,
 ): Card {
   const bodyElements: Card[] = [];
 
@@ -77,7 +107,7 @@ export function buildDailyCard(
     mkCollapsible(
       `📊 核心指标 · ${snapshots.filter((s) => !s.error).length} 项`,
       true,
-      [mkMarkdown(buildMetricsMarkdown(snapshots))],
+      [mkMarkdown(buildMetricsMarkdown(snapshots, purchase))],
     ),
   );
 

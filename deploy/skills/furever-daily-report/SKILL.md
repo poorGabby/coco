@@ -36,7 +36,7 @@ bash /opt/data/bin/push-daily-card-all.sh --all-groups
 
 ## 失败降级
 
-若脚本失败，简短说明错误；可用 MCP 工具逐个取数后输出精简 Markdown 表（DAU / New Users / Purchase Users / Revenue + DoD），并注明「卡片发送失败，以下为降级文本」。
+若脚本失败，简短说明错误；可用 MCP 工具逐个取数后输出全部核心指标的 WoW 精简 Markdown 表，并注明「卡片发送失败，以下为降级文本」。
 
 ## 禁止
 
