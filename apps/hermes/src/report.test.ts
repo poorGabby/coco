@@ -79,7 +79,7 @@ test("a stale DAU fails independently without moving the report off its Denver c
     if (url.includes("1n0bfs5k")) return dailyUniquesQueryResponse(dates.map((_, index) => 100 + index));
     if (url.includes("bh0r0h4o")) return csvResponse("Purchase Users", "Uniques", "None");
     if (url.includes("qycqvc95")) return csvResponse("Daily Revenue", "Totals", "None");
-    if (url.includes("ji5sqoml") || url.includes("5of8047n")) return retentionResponse();
+    if (url.includes("18lt8h9t") || url.includes("5of8047n")) return retentionResponse();
     throw new Error(`unexpected URL ${url}`);
   };
 

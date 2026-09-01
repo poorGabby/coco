@@ -49,14 +49,14 @@ CoCo 日报分析规范
 指标口径
 
 DAU、New Users、Purchase Users、Daily Revenue 统一采用 WoW：当前美区数据日 vs 7 天前同日。
-Retention 主值读取正式 Chart overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 使用百分点差。禁止 cohort rate 覆盖主值。
+New User Retention（Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day / Daily）和 Purchaser Companion Retention 主值读取正式 Chart overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 使用百分点差。禁止 cohort rate 覆盖主值。
 展示与行文规则：
 普通指标对外一律写「WoW」和「较上周同日」；Retention 明确主值为 overall、WoW 为单日 cohort 周同比。
 必须复用输入 snapshot 的 comparison 日期/cohort、数值和 WoW，不得重新取数或改算。
 数值展示格式示例：
 Daily Active Users (DAU) — Calendar Day: 208  (WoW +147.6%)
 收入: $12.99  (WoW -8.3%)
-Retention D7: 56.9% (WoW +4.8pp)
+New User Retention — Day 7: 56.9% (WoW +4.8pp)
 持平时写 WoW +0.0% 或 Retention WoW +0.0pp。
 
 变化率不可算时的写法（基期为 0）

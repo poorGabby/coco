@@ -95,8 +95,11 @@ test("Chart standard functions parse fixed timeseries rows and revenue formula",
 
 test("Retention standard function returns exact overall/combined Chart JSON numerator/outof/rate", async (t) => {
   const originalFetch = globalThis.fetch;
+  const requestedUrls: string[] = [];
   t.after(() => { globalThis.fetch = originalFetch; });
-  globalThis.fetch = async () => new Response(JSON.stringify({
+  globalThis.fetch = async (input) => {
+    requestedUrls.push(String(input));
+    return new Response(JSON.stringify({
     data: {
       series: [{
         dates: ["Aug 02, 2026", "Aug 09, 2026"],
@@ -136,9 +139,12 @@ test("Retention standard function returns exact overall/combined Chart JSON nume
       }],
       seriesMeta: [{ segmentIndex: 0, eventIndex: 0 }],
     },
-  }), { status: 200, headers: { "content-type": "application/json" } });
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
 
-  const result = await fetchStandardChartMetric(env, "Companion_Retention");
+  const result = await fetchStandardChartMetric(env, "New_User_Retention");
+  assert.equal(requestedUrls.length, 1);
+  assert.match(requestedUrls[0], /amplitude\.com\/api\/3\/chart\/18lt8h9t\/query/);
   assert.deepEqual(result.retention?.points.D3, {
     numerator: 18282,
     denominator: 35320,
@@ -249,7 +255,7 @@ test("Retention fails closed when an overall/combined requested day is incomplet
   }), { status: 200, headers: { "content-type": "application/json" } });
 
   await assert.rejects(
-    () => fetchStandardChartMetric(env, "Companion_Retention"),
+    () => fetchStandardChartMetric(env, "New_User_Retention"),
     /overall combined D7 is incomplete/,
   );
 });

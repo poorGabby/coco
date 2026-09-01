@@ -80,12 +80,13 @@
 | Revenue 派生 | 本地纯函数:`9.99×人数 + 6.99×人数`(`report.ts` 的 `deriveRevenueSnapshot`) |
 | 07-09 实测 | 9.99×2 + 6.99×1 = **$26.97** ✅ 与图表一致 |
 
-### 5. Retention(Companion / Purchaser)
+### 5. Retention(New User / Purchaser Companion)
 | 项 | 值 |
 |---|---|
 | 端点 | `GET /api/3/chart/{id}/query` |
-| Chart ID | Companion `ji5sqoml`、Purchaser `5of8047n` |
+| Chart ID | New User `18lt8h9t`、Purchaser `5of8047n` |
 | 图表类型 | N-Day Retention(UTC-7) |
+| New User Retention 口径 | `_new → companion_alive_daily`；Retention Method = N-day；Interval = Daily |
 | 读取 | Chart JSON `series.combined` 第一行，D1/D3/D7 索引 2/4/8 的 count/outof/incomplete |
 | 展示天数 | **D1 / D3 / D7**(`KEY_DAYS={1,3,7}`,2026-07-11 从 {1,3,7,14,30} 收窄) |
 | WoW | 暂时使用最新成熟单日 cohort vs 7 天前同日 cohort 的百分点差；仅用于 comparison，不影响 overall 主值 |

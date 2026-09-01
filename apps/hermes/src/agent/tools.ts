@@ -97,7 +97,7 @@ export const STRIPE_PURCHASE_METRIC_TOOL: ToolDeclaration = {
 export const RETENTION_METRIC_TOOL: ToolDeclaration = {
   name: "fetch_retention_metric",
   description:
-    "读取正式 Amplitude Retention Chart Breakdown Table 第一行 overall/combined 的 Companion 或 Purchaser Companion D1/D3/D7。" +
+    "读取正式 Amplitude Retention Chart /query Breakdown Table 第一行 overall/combined 的 New User 或 Purchaser Companion D1/D3/D7。" +
     "主值直接返回 /query combined 的 numerator、denominator、rate；WoW 暂时独立使用最新成熟单日 cohort 与 7 天前同日 cohort 的百分点差。" +
     "snapshot 明确标记 valueScope=overall-combined、wowScope=single-cohort-week-over-week；不得用 cohort rate 覆盖主值，不回退到 /api/2。",
   parameters: {
@@ -105,7 +105,7 @@ export const RETENTION_METRIC_TOOL: ToolDeclaration = {
     properties: {
       metricName: {
         type: "string",
-        enum: ["Companion_Retention", "Purchaser_Companion_Retention"],
+        enum: ["New_User_Retention", "Purchaser_Companion_Retention"],
       },
     },
     required: ["metricName"],
@@ -188,7 +188,7 @@ export function buildToolRegistry(env: Env): ToolRegistry {
     fetch_daily_revenue: (args) => fetchStandardChartMetric(env, "Daily_Revenue", args),
     fetch_retention_metric: (args) => {
       const metricName = String(args.metricName);
-      if (metricName !== "Companion_Retention" && metricName !== "Purchaser_Companion_Retention") {
+      if (metricName !== "New_User_Retention" && metricName !== "Purchaser_Companion_Retention") {
         throw new Error(`Unknown retention metric: ${metricName}`);
       }
       return fetchStandardChartMetric(env, metricName);

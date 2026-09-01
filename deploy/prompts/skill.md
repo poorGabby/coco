@@ -12,7 +12,7 @@ CoCo 数据口径 Skill（问答与日报共用的口径事实源）
 
 二、指标比较口径
 DAU、New Users、Purchase Users、Daily Revenue 统一使用 WoW = 最近完结日 vs 7 天前同日；对外写「WoW」并解释为「较上周同日」。
-Retention 主值读取正式 Chart overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 使用百分点差。禁止 cohort rate 覆盖主值。
+New User Retention（正式 Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day / Daily）和 Purchaser Companion Retention 主值读取正式 Chart overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 使用百分点差。禁止 cohort rate 覆盖主值。
 必须使用工具 snapshot 返回的 comparison 日期/cohort、数值和 WoW，不得自行重算或混用。
 当比较基期为 0 或缺失时，变化率一律写 N/A；禁止编造百分比，禁止写「从 0 恢复」「从 0 增长至」。
 变化率 0.0% 表示「持平」，不等于数据缺失。

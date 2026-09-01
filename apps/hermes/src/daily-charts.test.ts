@@ -25,6 +25,9 @@ test("resolveDailyCharts: 默认含 1n0bfs5k 与 bh0r0h4o", () => {
   );
   assert.ok(charts.some((c) => c.id === "1n0bfs5k"));
   assert.ok(charts.some((c) => c.id === "bh0r0h4o"));
+  const newUserRetention = charts.find((c) => c.role === "retention_new_user")!;
+  assert.equal(newUserRetention.id, "18lt8h9t");
+  assert.equal(newUserRetention.title, "New User Retention");
   const dau = charts.find((c) => c.role === "dau")!;
   assert.equal(dau.id, "ilhu9t17");
   assert.equal(dau.title, "Daily Active Users (DAU) — Calendar Day");

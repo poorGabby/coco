@@ -30,11 +30,11 @@ const ANALYSIS_SYSTEM_PROMPT_FALLBACK = `你是 Furever Dock 内部数据分析�
 
 规则：
 1. 只根据提供的数据分析，不编造。
-2. 所有核心指标统一采用 WoW。普通日指标比较当前美区数据日与 7 天前同日。Retention 主值必须使用 Last 30 days overall/combined；WoW 暂时单独比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点（pp）。禁止用 cohort rate 覆盖主值。
+2. 所有核心指标统一采用 WoW。普通日指标比较当前美区数据日与 7 天前同日。New User Retention 与 Purchaser Companion Retention 的主值必须使用各自正式 Chart /query 的 overall/combined；WoW 暂时单独比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点（pp）。禁止用 cohort rate 覆盖主值。
 3. 告警判定必须复用 snapshot 的 WoW。普通指标跌幅 >15% 或 Retention 下降超过 15pp，或关键指标显著走弱 → Alert；次重要指标走弱但未达告警线 → Watch。
 4. 正向变动也可标记（如「正向异常」）。
 5. 深度分析需引用具体数据、关联指标交叉验证。
-6. 中文输出。提及任何日期时，一律使用「美区 MM-DD」格式，日期取自指标数据标注的 America/Denver 日期。普通指标写「较上周同日」；Retention 明确说明“主值为 overall，WoW 为单日 cohort 周同比”。不要换算成北京时间。
+6. 中文输出。提及任何日期时，一律使用「美区 MM-DD」格式，日期取自指标数据标注的 America/Denver 日期。普通指标写「较上周同日」；New User Retention / Purchaser Companion Retention 明确说明“主值为 overall，WoW 为单日 cohort 周同比”。不要换算成北京时间。
 7. **变化率 0.0%/0.0pp ≠ 数据缺失。** 按 WoW 口径如实写「持平」；只有 N/A 或 — 才代表无法比较或缺失。
 8. **比较基期为 0 → 变化率 N/A。** 禁止编造百分比或写「从 0 恢复」。绝对量照常展示；当前真实值为 0 仍写 0。`;
 
@@ -122,7 +122,7 @@ export function buildAnalysisPrompt(snapshots: ChartSnapshot[]): string {
   const ts = snapshots.find(s => s.kind === "timeseries" && s.yesterday && !s.error);
   const dataDateMst = ts?.yesterday?.slice(5) ?? ""; // "07-09"
 
-  const lines = [`数据覆盖日期: 美区 ${dataDateMst}（America/Denver 时区，随夏令时偏移）。分析中提及任何日期（含 WoW 对比对象）时，一律使用「美区 MM-DD」格式。普通指标说明较上周同日；Retention 主值是 overall/combined，WoW 暂时是最新成熟单日 cohort vs 7 天前同日 cohort，两者不得混用；不要换算成北京时间。`, "", "## 指标清单", ""];
+  const lines = [`数据覆盖日期: 美区 ${dataDateMst}（America/Denver 时区，随夏令时偏移）。分析中提及任何日期（含 WoW 对比对象）时，一律使用「美区 MM-DD」格式。普通指标说明较上周同日；New User Retention / Purchaser Companion Retention 主值是各自正式 Chart 的 overall/combined，WoW 暂时是最新成熟单日 cohort vs 7 天前同日 cohort，两者不得混用；不要换算成北京时间。`, "", "## 指标清单", ""];
   for (const s of snapshots) {
     lines.push(snapshotToLine(s));
   }
@@ -169,7 +169,7 @@ export function buildAnalysisPrompt(snapshots: ChartSnapshot[]): string {
     "- 至少 1 个 alert，至多 3 个；至多 6 个 watch",
     "- 每个 alert 的 deepAnalysis 必须引用具体数字、做交叉指标关联分析",
     "- summary 要有高度概括，不堆砌数字",
-    "- 所有核心指标一律写 WoW；普通指标解释为较上周同日；Retention 必须说明主值来自 overall/combined，而 WoW 来自最新成熟单日 cohort vs 7 天前同日 cohort 的 pp 变化",
+    "- 所有核心指标一律写 WoW；普通指标解释为较上周同日；New User Retention / Purchaser Companion Retention 必须说明主值来自各自正式 Chart 的 overall/combined，而 WoW 来自最新成熟单日 cohort vs 7 天前同日 cohort 的 pp 变化",
     "- 若变化率=N/A（常见于基期为 0），说明因比较基期为 0 无法计算，禁止写「从 0 恢复」",
     "- 若某项数据缺失（N/A），直接在对应指标上如实说明",
     "- 只分析提供的指标，不要说「需查看XX图表」之类的话",
@@ -243,7 +243,7 @@ export function fallbackAnalysis(
               title: "无显著告警",
               value: "",
               summary: "所有指标波动在正常范围内。",
-              deepAnalysis: "所有普通指标 WoW 与 Retention 单日 cohort WoW 变动均未触发告警阈值；Retention 展示主值仍为 overall/combined。",
+              deepAnalysis: "所有普通指标 WoW 与 New User Retention / Purchaser Companion Retention 单日 cohort WoW 变动均未触发告警阈值；两项 Retention 展示主值仍为各自正式 Chart 的 overall/combined。",
             },
           ],
     watches,
@@ -264,7 +264,7 @@ export async function analyzeDailySnapshots(
       "",
       "## Runtime comparison contract（优先级高于文档中的旧比较规则）",
       "所有普通核心指标必须使用 snapshot 中的 WoW：当前数据日与 7 天前同日比较，并解释为‘较上周同日’。",
-      "Retention 主值必须使用 snapshot 的 overall/combined rate；WoW 暂时使用 snapshot 标记为 single-cohort-week-over-week 的 wowChangePp。禁止用 wowCurrentRate 或 comparisonRate 覆盖主值。",
+      "New User Retention 与 Purchaser Companion Retention 主值必须使用各自 snapshot 的 overall/combined rate；WoW 暂时使用 snapshot 标记为 single-cohort-week-over-week 的 wowChangePp。禁止用 wowCurrentRate 或 comparisonRate 覆盖主值。",
       "告警、关注项、摘要和正文必须复用各 snapshot 已计算好的 WoW，不得自行重算。",
     ].join("\n");
     return await generateGeminiJson<DailyAnalysis>(env, systemPrompt, userPrompt);

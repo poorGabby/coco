@@ -1,7 +1,6 @@
 import { loadEnv } from "./env.js";
-import { fetchAllChartSnapshots } from "./amplitude.js";
 import { askQuestion } from "./ask.js";
-import { generateReport } from "./report.js";
+import { fetchStandardMetricSnapshots, generateReport } from "./report.js";
 
 const cmd = process.argv[2];
 const rawArgs = process.argv.slice(3);
@@ -12,7 +11,8 @@ async function main() {
   const env = loadEnv();
 
   if (cmd === "test-amplitude") {
-    const snapshots = await fetchAllChartSnapshots(env);
+    // Retention diagnostics use the same standard /query path as the report.
+    const snapshots = await fetchStandardMetricSnapshots(env);
     for (const s of snapshots) {
       const status = s.error ? `ERROR: ${s.error}` : `${s.yesterdayValue} vs ${s.dayBeforeValue}`;
       console.log(`[${s.chartId}] ${s.title} (${s.kind}) → ${status}`);

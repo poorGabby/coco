@@ -8,7 +8,7 @@
 
 /** 各指标对比口径与基期为 0 的处理（与 analyze.ts 一致）。 */
 export const COMPARISON_RULES = `所有核心指标统一使用 WoW。DAU、New Users、Purchase Users、Daily Revenue 比较美区最近完结日与 7 天前同日，并写「较上周同日」。\
-Retention 主值读取正式 Chart /query 的 overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点差。必须遵守 valueScope=overall-combined、wowScope=single-cohort-week-over-week，禁止 cohort rate 覆盖主值。\
+New User Retention（Chart 18lt8h9t）与 Purchaser Companion Retention 的主值读取各自正式 Chart /query 的 overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点差。必须遵守 valueScope=overall-combined、wowScope=single-cohort-week-over-week，禁止 cohort rate 覆盖主值。\
 展示、告警和分析必须复用 snapshot 中的 comparison 日期/cohort、数值和 WoW，不得重新取数或改算。\
 当对应基期为 0 时无法计算变化率，一律写 N/A，禁止编造百分比或写「从 0 恢复」。`;
 

@@ -21,25 +21,22 @@ Retention 只使用 `/query` 的结构化 JSON；禁止混用 `/csv`。其他 CS
 | `ilhu9t17` | Daily Active Users (DAU) — Calendar Day | timeseries | 日 | `_active` uniques；America/Denver calendar day；无 rolling average；单行 `None` |
 | `z9j6r8us` | WAU | timeseries | **周** | 需要跳过未完结周 |
 | `1n0bfs5k` | New Users (Daily) | timeseries | 日 | `_new` Daily Uniques；单行 `None`；current 与 7 天前同日来自同一次 `/query` |
-| `ji5sqoml` | Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined D1/D3/D7 |
+| `18lt8h9t` | New User Retention | retention (N-Day) | Daily / Last 30 days | `_new → companion_alive_daily`; `/query` overall/combined D1/D3/D7 |
 | `xhd4uffg` | Purchase Completed | timeseries (分段) | 日 | ⚠️ 独立处理：不通过通用 parser，`deriveRevenueSnapshot` 独占总收入计算 |
 | `5of8047n` | Purchaser Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined；purchase_completed >=1 during Last 365 days |
 | *(derived)* | Daily Revenue | 计算值 | 日 | `xhd4uffg` 独立拉取，9.99/6.99 分段 × 人数求和 |
 
-**配置入口**: `AMPLITUDE_CHART_IDS` 环境变量，逗号分隔。
+**配置入口**: `AMPLITUDE_DAILY_CHART_IDS` 环境变量，逗号分隔；Retention 的正式 Chart ID 仍由标准指标定义固定校验。
 
 ## 3. 数据管线全流程
 
 ```
 配置 (env)
   │
-  ├─ fetchAllChartSnapshots()          ← 批处理，每批 3 个，间隔 500ms
-  │   └─ fetchChartSnapshot(chartId)   ← 单 chart HTTP GET
-  │       ├─ decodeCsvPayload()        ← 解 JSON wrapper
-  │       ├─ parseCsvRows()            ← 手工 CSV 解析（引号安全）
-  │       └─ parseChartCsv()           ← 分类为 timeseries/retention/unknown
-  │           ├─ extractTimeseries()   ← 日期列匹配 + 周图 fallback
-  │           └─ extractRetention()    ← N-Day / Bracket 分支
+  ├─ fetchStandardMetricSnapshots()    ← 日报与问答共用标准指标工具
+  │   ├─ daily uniques /query         ← DAU、New Users
+  │   ├─ retention /query             ← New User 与 Purchaser Companion；读取 combined D1/D3/D7
+  │   └─ 其他标准 Chart rows          ← 仅在对应指标允许时读取 CSV
   │
   ├─ deriveRevenueSnapshot()           ← 独立二次拉取 xhd4uffg
   │

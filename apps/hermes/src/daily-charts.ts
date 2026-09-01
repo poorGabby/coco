@@ -1,13 +1,13 @@
 /**
  * 日报指标单一注册表：与 Amplitude Dashboard o6xkdkvf 对齐。
- * 数字一律走 Chart Export CSV（写死 chart id），禁止 Segmentation 算日报。
+ * Chart ID 固定；正式日报由标准工具按指标选择 /query 或 CSV，Retention 必须走 /query。
  * Revenue 不在此表 — 走 Stripe（见 report.ts）。
  */
 export type DailyChartRole =
   | "dau"
   | "new_users"
   | "purchase_users"
-  | "retention_companion"
+  | "retention_new_user"
   | "retention_purchaser";
 
 export type DailyChartDef = {
@@ -41,10 +41,10 @@ export const DEFAULT_DAILY_CHARTS: readonly DailyChartDef[] = [
     title: "Purchase Users（购买去重人数 · 完成购买的独立用户，非收入/非订单数）",
   },
   {
-    id: "ji5sqoml",
-    role: "retention_companion",
+    id: "18lt8h9t",
+    role: "retention_new_user",
     kind: "retention",
-    title: "Companion Retention",
+    title: "New User Retention",
   },
   {
     id: "5of8047n",

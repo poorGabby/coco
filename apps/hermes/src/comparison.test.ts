@@ -33,8 +33,8 @@ const newUsers: ChartSnapshot = {
 };
 
 const retention: ChartSnapshot = {
-  chartId: "ji5sqoml",
-  title: "Companion Retention",
+  chartId: "18lt8h9t",
+  title: "New User Retention",
   kind: "retention",
   metricLabel: "Return On · 24-hour windows",
   yesterday: "2026-08-09",
@@ -96,12 +96,12 @@ test("fallback alerts use each snapshot comparison semantic", () => {
 
 test("retention renders overall/combined headline values with separate single-cohort WoW", () => {
   const report = buildReportMarkdown([retention]);
-  assert.match(report, /Companion Retention — Day 1 \| 2026-07-11~2026-08-09 overall: 56\.90% \(569\/1000\) \| WoW cohorts 2026-08-09 vs 2026-08-02: 60\.00% \(600\/1000\) → 52\.10% \(521\/1000\) \| WoW \+7\.90pp/);
-  assert.match(report, /Companion Retention — Day 7[^\n]*WoW -10\.00pp/);
+  assert.match(report, /• New User Retention — Day 1: 56\.9% \(WoW \+7\.9pp\)/);
+  assert.match(report, /• New User Retention — Day 7: 30\.0% \(WoW -10\.0pp\)/);
   assert.doesNotMatch(report, /D1 \/ D3 \/ D7|Day 1 D1/);
 
   const card = JSON.stringify(buildDailyCard({ alertCount: 0, watchCount: 0, summary: "ok", alerts: [], watches: [], hypotheses: "ok" }, [retention], "2026-08-09"));
-  assert.match(card, /Companion Retention — Day 1[^]*56\.90%[^]*WoW \+7\.90pp/);
+  assert.match(card, /New User Retention — Day 1[^]*56\.9%[^]*WoW \+7\.9pp/);
   assert.doesNotMatch(card, /D1 \/ D3 \/ D7|Day 1 D1/);
 
   const prompt = buildAnalysisPrompt([retention]);

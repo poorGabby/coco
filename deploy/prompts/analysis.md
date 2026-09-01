@@ -36,13 +36,13 @@
 指标比较口径
 
 DAU、New Users、Purchase Users、Daily Revenue 统一使用 WoW：当前美区数据日 vs 7 天前同日。
-Retention 主值使用正式 Chart Breakdown Table 第一行 overall/combined。WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 展示百分点差。必须区分 valueScope 与 wowScope，禁止 cohort rate 覆盖主值。
+New User Retention（Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day / Daily）和 Purchaser Companion Retention 的主值均使用正式 Chart Breakdown Table 第一行 overall/combined。WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 展示百分点差。必须区分 valueScope 与 wowScope，禁止 cohort rate 覆盖主值。
 展示与行文规则：
 普通指标的标题、正文、告警和关注卡片一律写「WoW」和「较上周同日」；Retention 明确主值为 overall、WoW 为单日 cohort 周同比。所有判断必须复用 snapshot 已计算的 WoW。
 数值展示格式示例：
 Daily Active Users (DAU) — Calendar Day: 208  (WoW +12.3%)
 收入: $12.99  (WoW -8.3%)
-Retention D7: 56.9% (WoW +4.8pp)
+New User Retention — Day 7: 56.9% (WoW +4.8pp)
 持平时写 WoW +0.0% 或 Retention WoW +0.0pp。
 
 变化率不可算时的写法（基期为 0）

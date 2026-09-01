@@ -97,7 +97,7 @@ export async function fetchStandardMetricSnapshots(
     "New_Users",
     "Purchase_Users",
     "Daily_Revenue",
-    "Companion_Retention",
+    "New_User_Retention",
     "Purchaser_Companion_Retention",
   ];
   // Report date is a calendar invariant, not a property of any one metric's freshness.
@@ -109,7 +109,7 @@ export async function fetchStandardMetricSnapshots(
     () => registry.fetch_amplitude_metric({ metricName: "New_Users", startDate: comparisonDate, endDate: currentDate }),
     () => registry.fetch_purchase_users({ startDate: comparisonDate, endDate: currentDate }),
     () => registry.fetch_daily_revenue({ startDate: comparisonDate, endDate: currentDate }),
-    () => registry.fetch_retention_metric({ metricName: "Companion_Retention" }),
+    () => registry.fetch_retention_metric({ metricName: "New_User_Retention" }),
     () => registry.fetch_retention_metric({ metricName: "Purchaser_Companion_Retention" }),
   ];
   // Amplitude Dashboard REST API allows at most five concurrent requests per project.
@@ -217,22 +217,10 @@ export function buildReportMarkdown(
       const retention = s.snapshot.retention;
       for (const day of ["D1", "D3", "D7"] as const) {
         const point = retention.points[day];
-        const current = point.rate == null
-          ? "—"
-          : `${(point.rate * 100).toFixed(2)}% (${point.numerator}/${point.denominator})`;
-        const wowCurrent = point.wowCurrentRate == null
-          ? "—"
-          : `${(point.wowCurrentRate * 100).toFixed(2)}% (${point.wowCurrentNumerator}/${point.wowCurrentDenominator})`;
-        const wowPrevious = point.comparisonRate == null
-          ? "—"
-          : `${(point.comparisonRate * 100).toFixed(2)}% (${point.comparisonNumerator}/${point.comparisonDenominator})`;
+        const current = point.rate == null ? "—" : `${(point.rate * 100).toFixed(1)}%`;
         const pp = point.wowChangePp;
-        const currentPeriod = retention.currentPeriod
-          ? `${retention.currentPeriod.startDate}~${retention.currentPeriod.endDate} overall`
-          : "Last 30 days overall";
-        const comparisonBasis = `WoW cohorts ${retention.currentCohort} vs ${retention.comparisonCohort}: ${wowCurrent} → ${wowPrevious}`;
-        const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(2)}pp`;
-        lines.push(`| ${label} — Day ${day.slice(1)} | ${currentPeriod}: ${current} | ${comparisonBasis} | ${wow} |`);
+        const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
+        lines.push(`• ${label} — Day ${day.slice(1)}: ${current} (${wow})`);
       }
       continue;
     }

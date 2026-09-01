@@ -25,9 +25,9 @@ function snapshotLine(s: ChartSnapshot): string {
     const retention = s.snapshot.retention;
     return (["D1", "D3", "D7"] as const).map((day) => {
       const point = retention.points[day];
-      const rate = point.rate == null ? "—" : `${(point.rate * 100).toFixed(2)}%`;
+      const rate = point.rate == null ? "—" : `${(point.rate * 100).toFixed(1)}%`;
       const pp = point.wowChangePp;
-      const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(2)}pp`;
+      const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
       return `• **${s.title} — Day ${day.slice(1)}**: ${rate}  (${wow})`;
     }).join("\n");
   }

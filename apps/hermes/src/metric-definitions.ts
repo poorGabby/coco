@@ -2,7 +2,7 @@ export type CoreBusinessMetric =
   | "DAU"
   | "New_Users"
   | "Purchase_Users"
-  | "Companion_Retention"
+  | "New_User_Retention"
   | "Purchaser_Companion_Retention"
   | "Daily_Revenue";
 
@@ -74,18 +74,18 @@ export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMet
       groupBy: [],
     },
   },
-  Companion_Retention: {
-    chartId: "ji5sqoml",
-    title: "Companion Retention",
-    metricVersion: "companion-retention.amplitude-chart-ji5sqoml.overall-value.cohort-wow.v4",
+  New_User_Retention: {
+    chartId: "18lt8h9t",
+    title: "New User Retention",
+    metricVersion: "new-user-retention.amplitude-chart-18lt8h9t.overall-value.cohort-wow.v1",
     valueScope: "overall-combined",
     wowScope: "single-cohort-week-over-week",
     status: "confirmed",
     chartDefinition: {
-      startEvent: "companion_alive_daily",
+      startEvent: "_new",
       returnEvent: "companion_alive_daily",
-      retentionType: "Return On",
-      windowCalculation: "24-hour windows",
+      retentionMethod: "N-day",
+      interval: "daily",
       days: [1, 3, 7],
       segment: "All Users",
       timezone: "America/Denver",

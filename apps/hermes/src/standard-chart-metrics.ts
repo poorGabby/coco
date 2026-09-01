@@ -487,7 +487,7 @@ export async function fetchStandardChartMetric(
   if (!definition.chartId) throw new Error(`${metricName}: fixed formal Chart ID is missing`);
   const chartId = definition.chartId;
   const fetchedAt = new Date();
-  const isRetention = metricName === "Companion_Retention" || metricName === "Purchaser_Companion_Retention";
+  const isRetention = metricName === "New_User_Retention" || metricName === "Purchaser_Companion_Retention";
 
   if (isRetention) {
     const data = await fetchRetentionChartData(env, chartId);

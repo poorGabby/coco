@@ -95,7 +95,7 @@ bash scripts/deploy.sh update-only
 
 ### 留存 WoW 异常
 
-检查正式 Retention Chart `/query` 的 `series.combined` 是否包含 D1/D3/D7 完整 `count/outof`，且 `incomplete=false`。主值必须来自 combined；WoW 暂时检查最新成熟单日 cohort 与 7 天前同日 cohort 两侧 D1/D3/D7 均完整，且不得覆盖主值。
+检查正式 New User Retention Chart `18lt8h9t` 的 `/query` 结果和 Purchaser Companion Retention Chart 的 `series.combined` 是否包含 D1/D3/D7 完整 `count/outof`，且 `incomplete=false`。主值必须来自 combined；WoW 暂时检查最新成熟单日 cohort 与 7 天前同日 cohort 两侧 D1/D3/D7 均完整，且不得覆盖主值。
 
 ## 7. 变更纪律
 

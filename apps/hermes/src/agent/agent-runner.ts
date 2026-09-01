@@ -88,7 +88,7 @@ export async function runAgentQuestion(
     "## 回答要求",
     "- 指标数值只能来自工具（fetch_amplitude_metric / fetch_purchase_users / fetch_daily_revenue）的返回；严禁把 Knowledge Base 里的任何数字当作指标数值。",
     "- 指标类问题：除总数外给出每日（或分组）明细，并说明数据来源（取工具返回的 source：Amplitude、指标名、日期区间、时区 America/Denver）。",
-    "- 所有核心指标使用工具 snapshot 的 WoW：普通指标写较上周同日；Retention 主值使用 overall/combined，WoW 暂时使用最新成熟单日 cohort vs 7 天前同日 cohort 的百分点差，禁止用 cohort rate 覆盖主值。",
+    "- 所有核心指标使用工具 snapshot 的 WoW：普通指标写较上周同日；New User Retention 与 Purchaser Companion Retention 主值使用各自正式 Chart /query 的 overall/combined，WoW 暂时使用最新成熟单日 cohort vs 7 天前同日 cohort 的百分点差，禁止用 cohort rate 覆盖主值。",
     "- 回答要具体、有分析感，用简洁专业的中文，不要只丢一个孤零零的数字。",
   ].join("\n");
 

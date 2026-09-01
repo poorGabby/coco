@@ -42,7 +42,13 @@ test("approved screenshot definitions are recorded without Stripe substitution",
   assert.equal(BUSINESS_METRIC_DEFINITIONS.Daily_Revenue.chartDefinition.unitPriceUsd, 9.99);
   assert.match(JSON.stringify(BUSINESS_METRIC_DEFINITIONS.Daily_Revenue), /purchase_completed/);
   assert.doesNotMatch(JSON.stringify(BUSINESS_METRIC_DEFINITIONS.Daily_Revenue), /Stripe/i);
-  assert.equal(BUSINESS_METRIC_DEFINITIONS.Companion_Retention.title, "Companion Retention");
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartId, "18lt8h9t");
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.title, "New User Retention");
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.startEvent, "_new");
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.returnEvent, "companion_alive_daily");
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.retentionMethod, "N-day");
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.interval, "daily");
+  assert.deepEqual(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.days, [1, 3, 7]);
   assert.equal(BUSINESS_METRIC_DEFINITIONS.Purchaser_Companion_Retention.title, "Purchaser Companion Retention");
 });
 
