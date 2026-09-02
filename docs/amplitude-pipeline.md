@@ -18,12 +18,12 @@ Retention 只使用 `/query` 的结构化 JSON；禁止混用 `/csv`。其他 CS
 
 | Chart ID | 指标 | 类型 | 粒度 | 备注 |
 |----------|------|------|------|------|
-| `ilhu9t17` | Daily Active Users (DAU) — Calendar Day | timeseries | 日 | `_active` uniques；America/Denver calendar day；无 rolling average；单行 `None` |
+| `ilhu9t17` | Daily Active Users (DAU) — Calendar Day | timeseries | 日 | `_active` uniques；America/Dawson calendar day；无 rolling average；单行 `None` |
 | `z9j6r8us` | WAU | timeseries | **周** | 需要跳过未完结周 |
-| `1n0bfs5k` | New Users (Daily) | timeseries | 日 | `_new` Daily Uniques；单行 `None`；current 与 7 天前同日来自同一次 `/query` |
-| `18lt8h9t` | New User Retention | retention (N-Day) | Daily / Last 30 days | `_new → companion_alive_daily`; `/query` overall/combined D1/D3/D7 |
+| `odptyaey` | New Users (Daily) | timeseries | 日 | `_new` Daily Uniques；All Users；America/Dawson；current 与 7 天前同日来自同一次 `/query` |
+| `lthx47q8` | New User Retention | retention (N-Day) | Daily | `_new → companion_alive_daily`; Last 30 Days；America/Dawson；All Users segment; `/query` overall/combined D1/D3/D7 |
 | `xhd4uffg` | Purchase Completed | timeseries (分段) | 日 | ⚠️ 独立处理：不通过通用 parser，`deriveRevenueSnapshot` 独占总收入计算 |
-| `5of8047n` | Purchaser Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined；purchase_completed >=1 during Last 365 days |
+| `v5i4q52e` | Purchaser Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined；purchase_completed >=1 during Last 365 days；America/Dawson |
 | *(derived)* | Daily Revenue | 计算值 | 日 | `xhd4uffg` 独立拉取，9.99/6.99 分段 × 人数求和 |
 
 **配置入口**: `AMPLITUDE_DAILY_CHART_IDS` 环境变量，逗号分隔；Retention 的正式 Chart ID 仍由标准指标定义固定校验。
@@ -113,14 +113,14 @@ total = sum of both
 
 | 概念 | 值 |
 |------|-----|
-| Amplitude 项目时区 | `America/Denver` (MST, UTC-7) |
-| 日报显示时区 | MST (UTC-7) |
-| 数据列日期 | Amplitude header 中的 `YYYY-MM-DD` (MST 日) |
+| 自动日报标准时区 | `America/Dawson`（全年固定 UTC-7） |
+| 日报显示时区 | UTC-7 |
+| 数据列日期 | Amplitude header 中的 `YYYY-MM-DD`（Dawson 日） |
 | "昨天"定义 | `shanghaiDate(-1)` — 上海时间的昨天日期 |
-| MST 日完结判断 | 北京时间次日 15:00 |
+| Dawson 日完结判断 | 北京时间次日 15:00 |
 | 未完结标注 | "（数据未完结）" |
 
-**注意**：这就是为什么 "昨天" 的北京日期 = Amplitude 列的 MST 日期 + 1 天（MST 0:00 = 北京 15:00，所以同日期的 MST 列从北京时间 15:00 开始有数据）。
+**注意**：这就是为什么“昨天”的北京日期 = Amplitude 列的 Dawson 日期 + 1 天（Dawson 0:00 = 北京 15:00，所以同日期的 Dawson 列从北京时间 15:00 开始有数据）。
 
 ## 7. 分析层
 

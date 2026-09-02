@@ -20,7 +20,7 @@ const dau: ChartSnapshot = {
 };
 
 const newUsers: ChartSnapshot = {
-  chartId: "1n0bfs5k",
+  chartId: "odptyaey",
   title: "New Users",
   kind: "timeseries",
   metricLabel: "Uniques (daily)",
@@ -33,7 +33,7 @@ const newUsers: ChartSnapshot = {
 };
 
 const retention: ChartSnapshot = {
-  chartId: "18lt8h9t",
+  chartId: "lthx47q8",
   title: "New User Retention",
   kind: "retention",
   metricLabel: "Return On · 24-hour windows",

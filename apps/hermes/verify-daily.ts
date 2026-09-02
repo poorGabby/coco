@@ -71,7 +71,7 @@ async function runCheck() {
   }
 
   const ts = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
-  console.log("\n" + ts + " | Denver current=" + currentDate + "  comparison=" + comparisonDate);
+  console.log("\n" + ts + " | Dawson current=" + currentDate + "  comparison=" + comparisonDate);
   let pass = 0, fail = 0;
   for (const c of checks) {
     const ok = c.bot === c.truth;

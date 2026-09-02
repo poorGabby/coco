@@ -48,15 +48,15 @@ export async function runAgentQuestion(
     buildWikiContext(env, trimmed),
   ]);
 
-  const denverToday = amplitudeDateStr(0);
-  const denverLastCompleted = amplitudeDateStr(-1);
-  const currentYear = denverToday.slice(0, 4);
+  const dawsonToday = amplitudeDateStr(0);
+  const dawsonLastCompleted = amplitudeDateStr(-1);
+  const currentYear = dawsonToday.slice(0, 4);
 
   const systemPrompt = [
     baseManual,
     "",
     "## 当前时间（用于解析相对 / 不完整日期）",
-    `今天（美区 America/Denver）是 ${denverToday}，最近一个完结日是 ${denverLastCompleted}，当前年份是 ${currentYear}。`,
+    `今天（美区 America/Dawson，固定 UTC-7）是 ${dawsonToday}，最近一个完结日是 ${dawsonLastCompleted}，当前年份是 ${currentYear}。`,
     `用户只给出月/日（如 7/6、7月6日）时，一律按当前年份 ${currentYear} 补全；除非用户明确写出其他年份，禁止使用往年日期。`,
     "多轮对话中若用户追问「每天/明细/来源」等，应沿用上一轮的指标与日期区间，不要擅自改成默认区间。",
     "",
@@ -81,13 +81,13 @@ export async function runAgentQuestion(
     "- 活跃用户 / 日活 / DAU → fetch_amplitude_metric(DAU)；周活 / WAU → WAU",
     "- 多少人购买 / 购买用户数 / 付费用户数 / 购买成功数 / 有多少人付费 → fetch_purchase_users（去重付费人数，与网页 UI/日报同源）",
     "- 收入 / 营收 / revenue / 赚了多少钱 / GMV → fetch_daily_revenue（正式 Chart 的 purchase_completed Event Totals × $9.99）",
-    "  · 三者口径不同、不可混用：fetch_purchase_users 给「完成购买的去重人数」（图表 bh0r0h4o，与 UI 一致）；",
-    "    fetch_daily_revenue 给正式图表 qycqvc95 的 purchase_completed Event Totals × $9.99；两者都属图表引擎口径，与 UI/日报对得上。",
+    "  · 三者口径不同、不可混用：fetch_purchase_users 给「完成购买的去重人数」（图表 7n9n6eez，与 UI 一致）；",
+    "    fetch_daily_revenue 给正式图表 xqmzi8cs 的 purchase_completed Event Totals × $9.99；两者都属图表引擎口径，与 UI/日报对得上。",
     "    正式指标只通过标准工具读取固定 Amplitude Chart；绝不能改用 /api/2、Stripe，也不能用购买人数乘单价估收入。",
     "",
     "## 回答要求",
     "- 指标数值只能来自工具（fetch_amplitude_metric / fetch_purchase_users / fetch_daily_revenue）的返回；严禁把 Knowledge Base 里的任何数字当作指标数值。",
-    "- 指标类问题：除总数外给出每日（或分组）明细，并说明数据来源（取工具返回的 source：Amplitude、指标名、日期区间、时区 America/Denver）。",
+    "- 指标类问题：除总数外给出每日（或分组）明细，并说明数据来源（取工具返回的 source：Amplitude、指标名、日期区间、时区 America/Dawson）。",
     "- 所有核心指标使用工具 snapshot 的 WoW：普通指标写较上周同日；New User Retention 与 Purchaser Companion Retention 主值使用各自正式 Chart /query 的 overall/combined，WoW 暂时使用最新成熟单日 cohort vs 7 天前同日 cohort 的百分点差，禁止用 cohort rate 覆盖主值。",
     "- 回答要具体、有分析感，用简洁专业的中文，不要只丢一个孤零零的数字。",
   ].join("\n");

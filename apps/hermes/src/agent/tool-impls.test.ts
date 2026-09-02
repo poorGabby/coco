@@ -257,7 +257,7 @@ test("fetchStripeRevenue: endDate 晚于完结日时 clamp", async () => {
   assert.ok(res.notes?.some((n) => n.includes("自动改为")));
 });
 
-// ── fetch_purchase_users（chart bh0r0h4o 同源）────────────────────────
+// ── fetch_purchase_users（chart 7n9n6eez 同源）────────────────────────
 
 const fakeUsersTable: PurchaseUsersTable = {
   dates: ["2026-07-05", "2026-07-06", "2026-07-11", "2026-07-12", "2026-07-13"],
@@ -276,7 +276,7 @@ test("fetchPurchaseUsers: 默认单日 + WoW", async () => {
   assert.equal(res.perDay[0].users, 15);
   assert.equal(res.sumOfDaily, 15);
   assert.equal(res.wowPct, 200); // (15-5)/5
-  assert.equal(res.snapshot.metricVersion, "purchase_users.amplitude-chart-bh0r0h4o.v1");
+  assert.equal(res.snapshot.metricVersion, "purchase_users.amplitude-chart-7n9n6eez.v2");
   assert.equal(res.snapshot.completeness, "complete");
 });
 
@@ -306,7 +306,7 @@ test("fetchPurchaseUsers: 窗口外日期给出缺列提示", async () => {
     today: () => "2026-07-13",
   });
   const res = await run({ startDate: "2026-07-09", endDate: "2026-07-13" });
-  assert.ok(res.notes?.some((n) => n.includes("bh0r0h4o") && n.includes("2026-07-09")));
+  assert.ok(res.notes?.some((n) => n.includes("7n9n6eez") && n.includes("2026-07-09")));
   assert.equal(res.snapshot.completeness, "partial");
   assert.equal(res.snapshot.validation.status, "warning");
 });

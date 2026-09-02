@@ -13,6 +13,8 @@ import {
 const CHART_API = "https://amplitude.com/api/3/chart";
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RETENTION_DAYS = [1, 3, 7] as const;
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_CHART_ATTEMPTS = 4;
 
 export type RetentionKey = "D1" | "D3" | "D7";
 
@@ -53,16 +55,34 @@ function dateToChartLabel(date: string): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+async function fetchChartApi(url: string, auth: string): Promise<Response> {
+  for (let attempt = 0; attempt < MAX_CHART_ATTEMPTS; attempt++) {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "application/json",
+        "Cache-Control": "no-cache, no-store",
+        Pragma: "no-cache",
+      },
+    });
+    if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt === MAX_CHART_ATTEMPTS - 1) {
+      return response;
+    }
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const backoffMs = 1000 * 2 ** attempt;
+    const delayMs = Number.isFinite(retryAfterSeconds)
+      ? Math.min(Math.max(retryAfterSeconds * 1000, backoffMs), 10_000)
+      : backoffMs;
+    await response.body?.cancel();
+    console.warn(`[amplitude] Chart request returned ${response.status}; retrying in ${delayMs}ms (${attempt + 2}/${MAX_CHART_ATTEMPTS})`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error("unreachable Amplitude retry state");
+}
+
 async function fetchChartRows(env: Env, chartId: string): Promise<string[][]> {
   const auth = Buffer.from(`${env.amplitudeApiKey}:${env.amplitudeSecretKey}`).toString("base64");
-  const response = await fetch(`${CHART_API}/${chartId}/csv?_t=${Date.now()}`, {
-    headers: {
-      Authorization: `Basic ${auth}`,
-      Accept: "application/json",
-      "Cache-Control": "no-cache, no-store",
-      Pragma: "no-cache",
-    },
-  });
+  const response = await fetchChartApi(`${CHART_API}/${chartId}/csv?_t=${Date.now()}`, auth);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Amplitude Chart ${chartId}: HTTP ${response.status}: ${body.slice(0, 160)}`);
@@ -92,14 +112,7 @@ type RetentionChartData = {
 
 async function fetchRetentionChartData(env: Env, chartId: string): Promise<RetentionChartData> {
   const auth = Buffer.from(`${env.amplitudeApiKey}:${env.amplitudeSecretKey}`).toString("base64");
-  const response = await fetch(`${CHART_API}/${chartId}/query?_t=${Date.now()}`, {
-    headers: {
-      Authorization: `Basic ${auth}`,
-      Accept: "application/json",
-      "Cache-Control": "no-cache, no-store",
-      Pragma: "no-cache",
-    },
-  });
+  const response = await fetchChartApi(`${CHART_API}/${chartId}/query?_t=${Date.now()}`, auth);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Amplitude Chart ${chartId}: HTTP ${response.status}: ${body.slice(0, 160)}`);
@@ -108,27 +121,37 @@ async function fetchRetentionChartData(env: Env, chartId: string): Promise<Reten
   const data = payload.data;
   if (
     !data
-    || data.series.length !== 1
-    || !data.series[0]?.combined
-    || data.seriesMeta.length !== 1
-    || data.seriesMeta[0]?.segmentIndex !== 0
-    || data.seriesMeta[0]?.eventIndex !== 0
+    || !Array.isArray(data.series)
+    || !Array.isArray(data.seriesMeta)
+    || data.series.length !== data.seriesMeta.length
   ) {
     throw new Error(`Amplitude Chart ${chartId}: retention JSON structure changed`);
   }
-  return data;
+
+  // The formal New User Retention chart may include comparison segments such as
+  // No_India. The standard metric remains All Users (segment 0), while multiple
+  // return events are forbidden because choosing an event by position would be
+  // ambiguous and could silently change the business definition.
+  const hasUnexpectedEvent = data.seriesMeta.some((meta) => meta.eventIndex !== 0);
+  const selectedIndexes = data.seriesMeta
+    .map((meta, index) => ({ meta, index }))
+    .filter(({ meta }) => meta.segmentIndex === 0 && meta.eventIndex === 0)
+    .map(({ index }) => index);
+  const selectedIndex = selectedIndexes[0];
+  const selectedSeries = selectedIndex == null ? undefined : data.series[selectedIndex];
+  if (hasUnexpectedEvent || selectedIndexes.length !== 1 || !selectedSeries?.combined) {
+    throw new Error(`Amplitude Chart ${chartId}: retention JSON structure changed`);
+  }
+
+  return {
+    series: [selectedSeries],
+    seriesMeta: [data.seriesMeta[selectedIndex]],
+  };
 }
 
 async function fetchTimeseriesChartData(env: Env, chartId: string): Promise<TimeseriesChartData> {
   const auth = Buffer.from(`${env.amplitudeApiKey}:${env.amplitudeSecretKey}`).toString("base64");
-  const response = await fetch(`${CHART_API}/${chartId}/query?_t=${Date.now()}`, {
-    headers: {
-      Authorization: `Basic ${auth}`,
-      Accept: "application/json",
-      "Cache-Control": "no-cache, no-store",
-      Pragma: "no-cache",
-    },
-  });
+  const response = await fetchChartApi(`${CHART_API}/${chartId}/query?_t=${Date.now()}`, auth);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Amplitude Chart ${chartId}: HTTP ${response.status}: ${body.slice(0, 160)}`);
@@ -193,7 +216,7 @@ function makeSnapshot(opts: {
       cohortDate: null,
     },
     source: "Amplitude Chart",
-    timezone: "America/Denver",
+    timezone: "America/Dawson",
     coverage: { startDate: opts.startDate, endDate: opts.endDate },
     pulledAt: fetchedAt,
     fetchedAt,
@@ -231,11 +254,7 @@ function timeseriesRow(metric: CoreBusinessMetric, rows: string[][]): {
     throw new Error(`${metric}: Chart measure changed (expected ${expectedMeasure})`);
   }
 
-  const requiredLabel = metric === "DAU"
-    ? "All Users"
-    : metric === "New_Users"
-      ? String(cfg.segmentRow)
-      : "None";
+  const requiredLabel = String(cfg.segmentRow ?? cfg.segment ?? "All Users");
   const matches = rows.filter((row) => clean(row[0]) === requiredLabel && row.length === header.length);
   if (matches.length !== 1) {
     throw new Error(`${metric}: expected exactly one segment row '${requiredLabel}', got ${matches.length}`);
@@ -323,7 +342,7 @@ function parseDailyUniquesQuery(
     checks: [
       `fixed Chart ID matches ${definition.chartId}`,
       `Chart event is ${String(cfg.eventLabel)} (${String(cfg.event)})`,
-      "Chart measure is Daily Uniques in America/Denver calendar-day intervals",
+      "Chart measure is Daily Uniques in America/Dawson calendar-day intervals",
       "Chart contains one unfiltered and ungrouped segment",
       "Chart query has no smoothing/transformation and all values are integer user counts",
       "all requested completed dates are present and numeric",

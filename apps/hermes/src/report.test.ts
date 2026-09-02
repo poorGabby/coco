@@ -58,7 +58,7 @@ function dailyUniquesQueryResponse(values: number[], queryDates = dates): Respon
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-test("a stale DAU fails independently without moving the report off its Denver calendar date", async (t) => {
+test("a stale DAU fails independently without moving the report off its Dawson calendar date", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async (input) => {
@@ -76,10 +76,10 @@ test("a stale DAU fails independently without moving the report off its Denver c
         transformationIds: [],
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
-    if (url.includes("1n0bfs5k")) return dailyUniquesQueryResponse(dates.map((_, index) => 100 + index));
-    if (url.includes("bh0r0h4o")) return csvResponse("Purchase Users", "Uniques", "None");
-    if (url.includes("qycqvc95")) return csvResponse("Daily Revenue", "Totals", "None");
-    if (url.includes("18lt8h9t") || url.includes("5of8047n")) return retentionResponse();
+    if (url.includes("odptyaey")) return dailyUniquesQueryResponse(dates.map((_, index) => 100 + index));
+    if (url.includes("7n9n6eez")) return csvResponse("Purchase Users", "Uniques", "All Users");
+    if (url.includes("xqmzi8cs")) return csvResponse("Daily Revenue", "Totals", "All Users");
+    if (url.includes("lthx47q8") || url.includes("v5i4q52e")) return retentionResponse();
     throw new Error(`unexpected URL ${url}`);
   };
 
@@ -105,7 +105,7 @@ test("a stale DAU fails independently without moving the report off its Denver c
 
 test("日报展示使用数据日期标题和精简 Daily Revenue 文案", () => {
   const revenue = {
-    chartId: "qycqvc95",
+    chartId: "xqmzi8cs",
     title: "Daily Revenue",
     kind: "timeseries",
     metricLabel: "Revenue",

@@ -34,7 +34,7 @@ const ANALYSIS_SYSTEM_PROMPT_FALLBACK = `你是 Furever Dock 内部数据分析�
 3. 告警判定必须复用 snapshot 的 WoW。普通指标跌幅 >15% 或 Retention 下降超过 15pp，或关键指标显著走弱 → Alert；次重要指标走弱但未达告警线 → Watch。
 4. 正向变动也可标记（如「正向异常」）。
 5. 深度分析需引用具体数据、关联指标交叉验证。
-6. 中文输出。提及任何日期时，一律使用「美区 MM-DD」格式，日期取自指标数据标注的 America/Denver 日期。普通指标写「较上周同日」；New User Retention / Purchaser Companion Retention 明确说明“主值为 overall，WoW 为单日 cohort 周同比”。不要换算成北京时间。
+6. 中文输出。提及任何日期时，一律使用「美区 MM-DD」格式，日期取自指标数据标注的 America/Dawson（固定 UTC-7）日期。普通指标写「较上周同日」；New User Retention / Purchaser Companion Retention 明确说明“主值为 overall，WoW 为单日 cohort 周同比”。不要换算成北京时间。
 7. **变化率 0.0%/0.0pp ≠ 数据缺失。** 按 WoW 口径如实写「持平」；只有 N/A 或 — 才代表无法比较或缺失。
 8. **比较基期为 0 → 变化率 N/A。** 禁止编造百分比或写「从 0 恢复」。绝对量照常展示；当前真实值为 0 仍写 0。`;
 
@@ -106,7 +106,7 @@ function snapshotToLine(s: ChartSnapshot): string {
     s.changePct != null
       ? `${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%`
       : "N/A";
-  // timeseries 的 yesterday/dayBefore 是美区(America/Denver)日期字符串(如 "2026-07-11")；
+  // timeseries 的 yesterday/dayBefore 是美区(America/Dawson)日期字符串(如 "2026-07-11")；
   // 带上明确日期锚点，避免 LLM 自行推断日期导致与标题错位。
   const yDate = s.kind === "timeseries" && s.yesterday ? `(美区 ${s.yesterday})` : "";
   const dDate = s.kind === "timeseries" && s.dayBefore ? `(美区 ${s.dayBefore})` : "";
@@ -118,11 +118,11 @@ function snapshotToLine(s: ChartSnapshot): string {
 }
 
 export function buildAnalysisPrompt(snapshots: ChartSnapshot[]): string {
-  // 从第一个 timeseries snapshot 取实际数据覆盖的美区(America/Denver)日期
+  // 从第一个 timeseries snapshot 取实际数据覆盖的美区(America/Dawson)日期
   const ts = snapshots.find(s => s.kind === "timeseries" && s.yesterday && !s.error);
   const dataDateMst = ts?.yesterday?.slice(5) ?? ""; // "07-09"
 
-  const lines = [`数据覆盖日期: 美区 ${dataDateMst}（America/Denver 时区，随夏令时偏移）。分析中提及任何日期（含 WoW 对比对象）时，一律使用「美区 MM-DD」格式。普通指标说明较上周同日；New User Retention / Purchaser Companion Retention 主值是各自正式 Chart 的 overall/combined，WoW 暂时是最新成熟单日 cohort vs 7 天前同日 cohort，两者不得混用；不要换算成北京时间。`, "", "## 指标清单", ""];
+  const lines = [`数据覆盖日期: 美区 ${dataDateMst}（America/Dawson，全年固定 UTC-7）。分析中提及任何日期（含 WoW 对比对象）时，一律使用「美区 MM-DD」格式。普通指标说明较上周同日；New User Retention / Purchaser Companion Retention 主值是各自正式 Chart 的 overall/combined，WoW 暂时是最新成熟单日 cohort vs 7 天前同日 cohort，两者不得混用；不要换算成北京时间。`, "", "## 指标清单", ""];
   for (const s of snapshots) {
     lines.push(snapshotToLine(s));
   }

@@ -1,6 +1,7 @@
 import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { Env } from "./env.js";
+import { reportDateOfEpochSec, reportMidnightUtcSec } from "./report-timezone.js";
 
 /**
  * Stripe 数据源（真实支付流水）。
@@ -8,15 +9,14 @@ import type { Env } from "./env.js";
  * 设计意图：作为可复用的「数据源 Skill」——日报的 Daily Revenue 与自由问答的
  * 收入工具都从这里取数，保证卡片与聊天的收入口径永远一致，不再各算各的。
  *
- * 口径：以 America/Denver 自然日归集 `succeeded && paid` 的 charge，
+ * 口径：以 America/Dawson（固定 UTC-7）自然日归集 `succeeded && paid` 的 charge，
  * revenue = Σ(amount − amount_refunded)。时区与 Amplitude 日报保持一致。
  */
 
-const STRIPE_TZ = "America/Denver";
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export interface StripeDailyRevenue {
-  /** Denver 自然日 YYYY-MM-DD */
+  /** Dawson 自然日 YYYY-MM-DD */
   date: string;
   /** 当日实际入账收入（美元，已扣退款） */
   revenue: number;
@@ -28,33 +28,7 @@ export interface StripeDailyRevenue {
   refunded: number;
 }
 
-/** 某个 Denver 自然日 00:00 对应的 UTC 秒级时间戳（自动处理 MST/MDT 夏令时）。 */
-function denverMidnightUtcSec(dateStr: string): number {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  // 用当天 UTC 12:00 探测 Denver 小时：MDT(UTC-6)→06，MST(UTC-7)→05
-  const probe = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  const denverHour = Number(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: STRIPE_TZ,
-      hour12: false,
-      hour: "2-digit",
-    }).format(probe),
-  );
-  const offsetHours = 12 - denverHour; // 6 或 7
-  return Date.UTC(y, m - 1, d, offsetHours, 0, 0) / 1000;
-}
-
-/** 把 UTC 秒级时间戳归集到其所属的 Denver 自然日 YYYY-MM-DD。 */
-function denverDateOf(epochSec: number): string {
-  // en-CA 输出 YYYY-MM-DD
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: STRIPE_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(epochSec * 1000));
-}
-
+/** 某个 Dawson 自然日 00:00 对应的 UTC 秒级时间戳（固定 UTC-7）。 */
 function addDays(dateStr: string, delta: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -119,7 +93,7 @@ function stripeGet(
 }
 
 /**
- * 拉取 [startDate, endDate]（含端点，均为 Denver 自然日）逐日的真实收入。
+ * 拉取 [startDate, endDate]（含端点，均为 Dawson 自然日）逐日的真实收入。
  * 返回 Map<YYYY-MM-DD, StripeDailyRevenue>，区间内每一天都有条目（无数据则为 0）。
  */
 export async function fetchStripeRevenueRange(
@@ -130,8 +104,8 @@ export async function fetchStripeRevenueRange(
   if (!env.stripeApiKey) {
     throw new Error("STRIPE_API_KEY 未配置");
   }
-  const gte = denverMidnightUtcSec(startDate);
-  const lt = denverMidnightUtcSec(addDays(endDate, 1));
+  const gte = reportMidnightUtcSec(startDate);
+  const lt = reportMidnightUtcSec(addDays(endDate, 1));
 
   // 预置区间内每一天，保证缺数据的日子也返回 0 而不是缺失
   const days = new Map<string, StripeDailyRevenue>();
@@ -152,7 +126,7 @@ export async function fetchStripeRevenueRange(
     const data = (json.data as StripeCharge[]) ?? [];
     for (const c of data) {
       if (c.status !== "succeeded" || !c.paid) continue;
-      const day = denverDateOf(c.created);
+      const day = reportDateOfEpochSec(c.created);
       const entry = days.get(day);
       if (!entry) continue; // 落在区间外（分页边界）忽略
       const refunded = c.amount_refunded ?? 0;
@@ -171,7 +145,7 @@ export async function fetchStripeRevenueRange(
   return days;
 }
 
-/** 便捷方法：取单个 Denver 自然日的真实收入。 */
+/** 便捷方法：取单个 Dawson 自然日的真实收入。 */
 export async function fetchStripeDailyRevenue(
   env: Env,
   date: string,

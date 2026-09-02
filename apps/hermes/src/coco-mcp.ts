@@ -34,8 +34,8 @@ export function createCocoMcpServer(env: Env): McpServer {
     "fetch_daily_revenue",
     {
       description:
-        "计算 Daily Revenue（营收）。固定读取正式 Amplitude Chart qycqvc95：purchase_completed Event Totals × $9.99；禁止 Stripe 或 /api/2 fallback。" +
-        "时区 America/Denver。默认最近完结日——除非用户明确给历史区间，否则不要传 startDate/endDate。" +
+        "计算 Daily Revenue（营收）。固定读取正式 Amplitude Chart xqmzi8cs：purchase_completed Event Totals × $9.99；禁止 Stripe 或 /api/2 fallback。" +
+        "时区 America/Dawson（固定 UTC-7）。默认最近完结日——除非用户明确给历史区间，否则不要传 startDate/endDate。" +
         "一次只查收入；问收入必须用本工具。",
       inputSchema: {
         startDate: z.string().optional().describe("起始日 YYYY-MM-DD（美区）。默认勿传"),
@@ -55,7 +55,7 @@ export function createCocoMcpServer(env: Env): McpServer {
     "fetch_amplitude_metric",
     {
       description:
-        "拉取 Amplitude 分日指标 DAU / WAU / New_Users。时区 America/Denver。" +
+        "拉取 Amplitude 分日指标 DAU / WAU / New_Users。时区 America/Dawson（固定 UTC-7）。" +
         "默认最近完结日——不要传日期，除非用户明确给区间。一次只传一个 metricName。" +
         "不负责购买人数或收入。",
       inputSchema: {

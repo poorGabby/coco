@@ -6,9 +6,9 @@ import {
   resolveDailyCharts,
   type DailyChartDef,
 } from "./daily-charts.js";
+import { reportDateStr, reportWeekMonday } from "./report-timezone.js";
 
 const AMPLITUDE_API_BASE = "https://amplitude.com/api/3/chart";
-const AMPLITUDE_TZ = "America/Denver";
 
 export type FetchChartOptions = {
   titleOverride?: string;
@@ -149,34 +149,16 @@ export function toNumber(value: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** 返回 Amplitude 项目时区 (America/Denver, UTC-7) 下偏移后的日期字符串 YYYY-MM-DD。
+/** 返回日报标准时区 (America/Dawson, fixed UTC-7) 下偏移后的日期字符串 YYYY-MM-DD。
  *  直接用 Intl.DateTimeFormat 在目标时区下格式化，消除手动偏移假设。 */
 export function amplitudeDateStr(offsetDays: number): string {
-  const now = new Date();
-  const tzDate = new Date(
-    now.toLocaleString("en-US", { timeZone: AMPLITUDE_TZ }),
-  );
-  tzDate.setDate(tzDate.getDate() + offsetDays);
-  const y = tzDate.getFullYear();
-  const m = String(tzDate.getMonth() + 1).padStart(2, "0");
-  const d = String(tzDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return reportDateStr(offsetDays);
 }
 
 /** WAU 专用：返回 Amplitude 项目时区当前周的周一日期 YYYY-MM-DD。
  *  offsetWeeks: 0=本周, -1=上周。WAU 按自然周计算，而非滚动 7 天。 */
 export function amplitudeWeekMonday(offsetWeeks = 0): string {
-  const now = new Date();
-  const tzDate = new Date(
-    now.toLocaleString("en-US", { timeZone: AMPLITUDE_TZ }),
-  );
-  const dow = tzDate.getDay(); // 0=Sun 1=Mon … 6=Sat
-  const daysFromMonday = dow === 0 ? 6 : dow - 1;
-  tzDate.setDate(tzDate.getDate() - daysFromMonday + offsetWeeks * 7);
-  const y = tzDate.getFullYear();
-  const m = String(tzDate.getMonth() + 1).padStart(2, "0");
-  const d = String(tzDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return reportWeekMonday(offsetWeeks);
 }
 
 /** 将 AmplitudeSkill 日级输出转为下游兼容的 ChartSnapshot[] */
@@ -237,7 +219,7 @@ export function selectSegmentRows(
   return matched.length > 0 ? matched : dataRows;
 }
 
-/** 从已解析 CSV 提取日级昨/前值（America/Denver 完结日）。导出供单测。 */
+/** 从已解析 CSV 提取日级昨/前值（America/Dawson 完结日）。导出供单测。 */
 export function extractTimeseries(
   parsed: ParsedCsv,
   opts?: { segmentPrefer?: RegExp },
@@ -269,7 +251,7 @@ export function extractTimeseries(
     }
   }
 
-  // 与日报/Stripe 一致：America/Denver「最近完结日」
+  // 与日报/Stripe 一致：America/Dawson「最近完结日」
   const yesterday = amplitudeDateStr(-1);
   const dayBefore = amplitudeDateStr(-2);
   let yesterdayValue = valuesByDate.get(yesterday) ?? null;
@@ -539,7 +521,7 @@ export async function fetchPurchaseProductTable(env: Env): Promise<PurchaseProdu
   return { dates, products };
 }
 
-/** Amplitude 保存图表 bh0r0h4o（Purchase Completed — Unique Users）的解析结果：
+/** Amplitude 保存图表 7n9n6eez（Purchase Completed — Unique Users）的解析结果：
  *  purchase_completed 无分组的每日去重付费用户数。这是 UI 图表引擎口径，
  *  与日报走的 xhd4uffg（分 product）同属图表家族，数值与 Amplitude 网页一致。 */
 export interface PurchaseUsersTable {
@@ -549,11 +531,11 @@ export interface PurchaseUsersTable {
   byDate: Record<string, number | null>;
 }
 
-/** 拉取并解析 bh0r0h4o（无分组的购买去重人数）。
+/** 拉取并解析 7n9n6eez（无分组的购买去重人数）。
  *  CSV 结构：表头行以 "Segment" 起，数据行以 "None" 起（无分组段）。 */
 export async function fetchPurchaseUsersTable(env: Env): Promise<PurchaseUsersTable> {
   const auth = Buffer.from(`${env.amplitudeApiKey}:${env.amplitudeSecretKey}`).toString("base64");
-  const url = `${AMPLITUDE_API_BASE}/bh0r0h4o/csv?_t=${Date.now()}`;
+  const url = `${AMPLITUDE_API_BASE}/7n9n6eez/csv?_t=${Date.now()}`;
   const response = await fetch(url, {
     headers: { Authorization: `Basic ${auth}`, "Cache-Control": "no-cache, no-store", Pragma: "no-cache" },
   });
@@ -564,7 +546,7 @@ export async function fetchPurchaseUsersTable(env: Env): Promise<PurchaseUsersTa
   const rows = parseCsvRows(csv);
 
   const headerRow = rows.find((r) => r[0] === "Segment");
-  if (!headerRow) throw new Error("Missing Segment header row in bh0r0h4o CSV");
+  if (!headerRow) throw new Error("Missing Segment header row in 7n9n6eez CSV");
   const dates = headerRow.slice(1);
 
   // 无分组图表的数据行 segment 名为 "None"

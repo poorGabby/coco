@@ -27,14 +27,14 @@ Registered agent tools and current verification state:
 
 | Metric/tool | Metric version | Formal source | State |
 | --- | --- | --- | --- |
-| DAU / `fetch_amplitude_metric` | `dau.amplitude-chart-ilhu9t17.calendar-day.wow.v4` | Amplitude Chart `ilhu9t17`: Any Active Event (`_active`) uniques, daily calendar-day intervals, America/Denver, no rolling average, no filters/group-by | Confirmed; current completed calendar day WoW against the same weekday 7 days earlier |
-| New Users / `fetch_amplitude_metric` | `new-users.amplitude-chart-1n0bfs5k.daily-uniques.wow.v3` | Amplitude Chart `1n0bfs5k` (`New Users (Daily)`): `[Amplitude] New User` Daily Uniques, single `None` series, America/Denver | Confirmed; latest completed Denver day vs the same weekday 7 days earlier from one `/query` response |
-| Purchase Users / `fetch_purchase_users` | `purchase-users.amplitude-chart-bh0r0h4o.wow.v2` | Amplitude Chart `bh0r0h4o`: purchase_completed uniques, All Users | Confirmed; WoW |
-| New User Retention / `fetch_retention_metric` | `new-user-retention.amplitude-chart-18lt8h9t.overall-value.cohort-wow.v1` | Amplitude Chart `18lt8h9t`: `_new → companion_alive_daily`, N-day / Daily; headline Breakdown Table overall/combined D1/D3/D7; temporary WoW from latest mature cohort vs seven days earlier | `valueScope=overall-combined`; `wowScope=single-cohort-week-over-week` |
-| Purchaser Companion Retention / `fetch_retention_metric` | `purchaser-companion-retention.amplitude-chart-5of8047n.overall-value.cohort-wow.v4` | Amplitude Chart `5of8047n`: headline overall/combined D1/D3/D7, purchase_completed >=1 during Last 365 days; temporary cohort WoW | `valueScope=overall-combined`; `wowScope=single-cohort-week-over-week` |
-| Daily Revenue / `fetch_daily_revenue` | `daily-revenue.amplitude-chart-qycqvc95.wow.v2` | Amplitude Chart `qycqvc95`: purchase_completed Event Totals × $9.99 | Confirmed; WoW; no Stripe or `/api/2` fallback |
+| DAU / `fetch_amplitude_metric` | `dau.amplitude-chart-ilhu9t17.calendar-day.wow.v4` | Amplitude Chart `ilhu9t17`: Any Active Event (`_active`) uniques, daily calendar-day intervals, America/Dawson (fixed UTC-7), no rolling average, no filters/group-by | Confirmed; current completed calendar day WoW against the same weekday 7 days earlier |
+| New Users / `fetch_amplitude_metric` | `new-users.amplitude-chart-odptyaey.daily-uniques.wow.v4` | Amplitude Chart `odptyaey` (`New Users (Daily)`): `[Amplitude] New User` Daily Uniques, single All Users series, America/Dawson (fixed UTC-7) | Confirmed; latest completed Dawson day vs the same weekday 7 days earlier from one `/query` response |
+| Purchase Users / `fetch_purchase_users` | `purchase-users.amplitude-chart-7n9n6eez.wow.v3` | Amplitude Chart `7n9n6eez`: purchase_completed uniques, All Users, America/Dawson | Confirmed; WoW |
+| New User Retention / `fetch_retention_metric` | `new-user-retention.amplitude-chart-lthx47q8.overall-value.cohort-wow.v3` | Amplitude Chart `lthx47q8`: `_new → companion_alive_daily`, N-day / Daily, Last 30 Days, America/Dawson; select All Users (segment 0), ignore No_India comparison; headline Breakdown Table overall/combined D1/D3/D7; temporary WoW from latest mature cohort vs seven days earlier | `valueScope=overall-combined`; `wowScope=single-cohort-week-over-week` |
+| Purchaser Companion Retention / `fetch_retention_metric` | `purchaser-companion-retention.amplitude-chart-v5i4q52e.overall-value.cohort-wow.v5` | Amplitude Chart `v5i4q52e`: headline overall/combined D1/D3/D7, purchase_completed >=1 during Last 365 days, America/Dawson; temporary cohort WoW | `valueScope=overall-combined`; `wowScope=single-cohort-week-over-week` |
+| Daily Revenue / `fetch_daily_revenue` | `daily-revenue.amplitude-chart-xqmzi8cs.wow.v3` | Amplitude Chart `xqmzi8cs`: purchase_completed Event Totals × $9.99, America/Dawson | Confirmed; WoW; no Stripe or `/api/2` fallback |
 
-All current metric tools use `America/Denver` date boundaries.
+All current metric tools use `America/Dawson` (fixed UTC-7) date boundaries.
 
 Every formal metric is read only through its standard function. The standard function may read its fixed formal Chart JSON/CSV. Chart access, structure changes, missing cells, immature retention cells, and parse failures fail closed; Stripe and `/api/2` fallback are forbidden.
 

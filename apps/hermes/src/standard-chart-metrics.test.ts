@@ -31,9 +31,9 @@ test("Chart standard functions parse fixed timeseries rows and revenue formula",
         transformationIds: [],
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
-    if (url.includes("1n0bfs5k")) {
+    if (url.includes("odptyaey")) {
       newUsersFetchCount += 1;
-      assert.match(url, /\/1n0bfs5k\/query\?/);
+      assert.match(url, /\/odptyaey\/query\?/);
       return new Response(JSON.stringify({
         data: {
           series: [[690, 1414, 1465, 1322, 722, 627, 869, 1139].map((value) => ({ setId: "", value }))],
@@ -43,12 +43,12 @@ test("Chart standard functions parse fixed timeseries rows and revenue formula",
         transformationIds: [],
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
-    if (url.includes("qycqvc95")) {
+    if (url.includes("xqmzi8cs")) {
       return csvResponse([
         '"\tDaily Revenue (purchase_completed × $9.99)"',
         '"\tTotals"',
         '"\tSegment","\t2026-08-10","\t2026-08-11","\t2026-08-12","\t2026-08-13","\t2026-08-14","\t2026-08-15","\t2026-08-16","\t2026-08-17"',
-        '"\tNone","30","31","32","33","34","53","49","41"',
+        '"\tAll Users","30","31","32","33","34","53","49","41"',
       ].join("\n"));
     }
     throw new Error(`unexpected URL ${url}`);
@@ -74,8 +74,8 @@ test("Chart standard functions parse fixed timeseries rows and revenue formula",
   const newUsers = await fetchStandardChartMetric(env, "New_Users", {
     startDate: "2026-08-10", endDate: "2026-08-11",
   });
-  assert.equal(newUsers.snapshot.chartId, "1n0bfs5k");
-  assert.equal(newUsers.snapshot.metricVersion, "new-users.amplitude-chart-1n0bfs5k.daily-uniques.wow.v3");
+  assert.equal(newUsers.snapshot.chartId, "odptyaey");
+  assert.equal(newUsers.snapshot.metricVersion, "new-users.amplitude-chart-odptyaey.daily-uniques.wow.v4");
   assert.equal(newUsers.snapshot.currentDate, "2026-08-11");
   assert.equal(newUsers.snapshot.currentValue, 1139);
   assert.equal(newUsers.snapshot.comparisonDate, "2026-08-04");
@@ -90,7 +90,35 @@ test("Chart standard functions parse fixed timeseries rows and revenue formula",
   assert.equal(revenue.chartSnapshot.comparisonKind, "WoW");
   assert.equal(revenue.chartSnapshot.dayBefore, "2026-08-10");
   assert.equal(revenue.snapshot.comparisonValue, 299.7);
-  assert.match(revenue.snapshot.metricVersion, /qycqvc95/);
+  assert.match(revenue.snapshot.metricVersion, /xqmzi8cs/);
+});
+
+test("Chart requests retry a transient 429 and still use the formal saved Chart", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Response('{"error":"rate limited"}', {
+        status: 429,
+        headers: { "retry-after": "0", "content-type": "application/json" },
+      });
+    }
+    return csvResponse([
+      '"\tDaily Revenue (purchase_completed × $9.99)"',
+      '"\tTotals"',
+      '"\tSegment","\t2026-08-10","\t2026-08-11","\t2026-08-12","\t2026-08-13","\t2026-08-14","\t2026-08-15","\t2026-08-16","\t2026-08-17"',
+      '"\tAll Users","30","31","32","33","34","35","36","41"',
+    ].join("\n"));
+  };
+
+  const result = await fetchStandardChartMetric(env, "Daily_Revenue", {
+    startDate: "2026-08-17",
+    endDate: "2026-08-17",
+  });
+  assert.equal(attempts, 2);
+  assert.equal(result.snapshot.currentValue, 409.59);
 });
 
 test("Retention standard function returns exact overall/combined Chart JSON numerator/outof/rate", async (t) => {
@@ -136,15 +164,22 @@ test("Retention standard function returns exact overall/combined Chart JSON nume
           {}, {}, {},
           { count: 14169, outof: 30389, incomplete: false },
         ],
+      }, {
+        dates: [],
+        values: {},
+        combined: [{ count: 1, outof: 1, incomplete: false }],
       }],
-      seriesMeta: [{ segmentIndex: 0, eventIndex: 0 }],
+      seriesMeta: [
+        { segmentIndex: 0, eventIndex: 0 },
+        { segmentIndex: 1, eventIndex: 0 },
+      ],
     },
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
 
   const result = await fetchStandardChartMetric(env, "New_User_Retention");
   assert.equal(requestedUrls.length, 1);
-  assert.match(requestedUrls[0], /amplitude\.com\/api\/3\/chart\/18lt8h9t\/query/);
+  assert.match(requestedUrls[0], /amplitude\.com\/api\/3\/chart\/lthx47q8\/query/);
   assert.deepEqual(result.retention?.points.D3, {
     numerator: 18282,
     denominator: 35320,
@@ -179,6 +214,30 @@ test("Retention standard function returns exact overall/combined Chart JSON nume
   assert.equal(result.chartSnapshot.changePct, ((7951 / 10156) - (6300 / 9000)) * 100);
   assert.match(result.chartSnapshot.dayBefore ?? "", /2026-08-09 cohort vs 2026-08-02 cohort/);
   assert.equal(result.chartSnapshot.comparisonKind, "WoW");
+});
+
+test("Retention fails closed when the saved Chart contains multiple return events", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const series = {
+    dates: [],
+    values: {},
+    combined: [{ count: 1, outof: 1, incomplete: false }],
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: {
+      series: [series, series],
+      seriesMeta: [
+        { segmentIndex: 0, eventIndex: 0 },
+        { segmentIndex: 0, eventIndex: 1 },
+      ],
+    },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  await assert.rejects(
+    () => fetchStandardChartMetric(env, "New_User_Retention"),
+    /retention JSON structure changed/,
+  );
 });
 
 test("Chart structure changes fail closed", async (t) => {

@@ -1,6 +1,7 @@
 import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { Env } from "./env.js";
+import { reportMidnightUtcSec } from "./report-timezone.js";
 
 export type PurchaseProduct = "secondPet" | "pocket" | "stash" | "bigBag";
 export type StripePurchaseDay = {
@@ -12,7 +13,6 @@ export type StripePurchaseDay = {
   repeatedUserProductPurchases?: number;
 };
 
-const TZ = "America/Denver";
 const MAX_PAGES_PER_DAY = 100;
 const MAX_CONCURRENT_DAYS = 4;
 const emptyUsers = (): Record<PurchaseProduct, Set<string>> => ({
@@ -76,7 +76,7 @@ export async function fetchStripePurchaseRange(env: Env, startDate: string, endD
   const dates: string[] = [];
   for (let d = startDate; d <= endDate; d = addDays(d, 1)) dates.push(d);
 
-  // Stripe cursors are sequential within a query. Splitting by Denver day lets
+  // Stripe cursors are sequential within a query. Splitting by Dawson day lets
   // the eight-day report window make progress in parallel without changing the
   // paid-session or product classification rules.
   const days = new Map<string, StripePurchaseDay>();
@@ -90,8 +90,8 @@ export async function fetchStripePurchaseRange(env: Env, startDate: string, endD
 
 async function fetchStripePurchaseDay(env: Env, date: string): Promise<StripePurchaseDay> {
   const day = emptyDay(date);
-  const gte = denverMidnightUtcSec(date);
-  const lt = denverMidnightUtcSec(addDays(date, 1));
+  const gte = reportMidnightUtcSec(date);
+  const lt = reportMidnightUtcSec(addDays(date, 1));
   let after: string | undefined;
 
   for (let page = 0; page < MAX_PAGES_PER_DAY; page++) {
@@ -130,13 +130,6 @@ async function fetchStripePurchaseDay(env: Env, date: string): Promise<StripePur
 }
 
 function addDays(date: string, delta: number): string { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); }
-function denverMidnightUtcSec(date: string): number {
-  const [y, m, d] = date.split("-").map(Number);
-  const probe = new Date(Date.UTC(y, m - 1, d, 12));
-  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour12: false, hour: "2-digit" }).format(probe));
-  return Date.UTC(y, m - 1, d, 12 - hour) / 1000;
-}
-
 export function stripePurchaseCounts(day: StripePurchaseDay | undefined) {
   const users = day?.users ?? emptyUsers();
   const treats = new Set([...users.pocket, ...users.stash, ...users.bigBag]);

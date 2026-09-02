@@ -8,7 +8,7 @@ import {
 /**
  * 工具层：现有取数函数的薄封装。
  *
- * 所有业务口径（Denver 时区、指标定义、重试/超时）都由被封装的
+ * 所有业务口径（America/Dawson 固定 UTC-7 时区、指标定义、重试/超时）都由被封装的
  * `AmplitudeSkill` 继承，本文件只负责：参数校验、日期区间归一、
  * 把 skill 输出裁剪并汇总成 LLM 友好的结构。全部逻辑可注入依赖后单测，
  * 不打真实网络。
@@ -43,7 +43,7 @@ export interface DataSnapshotMeta {
   input: Record<string, unknown>;
   /** Data source and fixed query definition. */
   source: string;
-  timezone: "America/Denver";
+  timezone: "America/Dawson";
   coverage: { startDate: string; endDate: string };
   pulledAt: string;
   /** ISO fetch time (explicit alias retained alongside legacy `pulledAt`). */
@@ -100,9 +100,9 @@ export interface DataSnapshotMeta {
 
 export interface FetchMetricInput {
   metricName: string;
-  /** 起始日 YYYY-MM-DD（美区 America/Denver），可选 */
+  /** 起始日 YYYY-MM-DD（美区 America/Dawson），可选 */
   startDate?: string;
-  /** 结束日 YYYY-MM-DD（美区 America/Denver），可选 */
+  /** 结束日 YYYY-MM-DD（美区 America/Dawson），可选 */
   endDate?: string;
   /** 按事件属性分组，如 "product"，可选 */
   groupByProp?: string;
@@ -135,7 +135,7 @@ export interface FetchMetricResult {
 
 export interface FetchAmplitudeMetricDeps {
   execute: AmplitudeExecutor;
-  /** 返回「最近一个完结的 Denver 日」YYYY-MM-DD（默认 amplitudeDateStr(-1)）。 */
+  /** 返回「最近一个完结的 Dawson 日」YYYY-MM-DD（默认 amplitudeDateStr(-1)）。 */
   today: () => string;
   now?: () => Date;
   maxRangeDays?: number;
@@ -163,7 +163,7 @@ function buildSnapshotMeta(opts: {
     chartId: null,
     input: opts.input,
     source: opts.source,
-    timezone: "America/Denver",
+    timezone: "America/Dawson",
     coverage: { startDate: opts.startDate, endDate: opts.endDate },
     pulledAt: opts.pulledAt.toISOString(),
     fetchedAt: opts.pulledAt.toISOString(),
@@ -281,7 +281,7 @@ export function createFetchAmplitudeMetric(deps: FetchAmplitudeMetricDeps) {
       );
     }
 
-    const source = `Amplitude 产品分析（segmentation API），指标 ${input.metricName}，时区 America/Denver`;
+    const source = `Amplitude 产品分析（segmentation API），指标 ${input.metricName}，时区 America/Dawson`;
     return {
       metricName: input.metricName,
       startDate,
@@ -303,7 +303,7 @@ export function createFetchAmplitudeMetric(deps: FetchAmplitudeMetricDeps) {
         completeness: grandSum === 0 ? "empty" : "complete",
         checks: [
           "metric is registered",
-          "date range is normalized to completed Denver days",
+          "date range is normalized to completed Dawson days",
           "range length is within maxRangeDays",
         ],
         notes,
@@ -380,7 +380,7 @@ export interface FetchDailyRevenueDeps {
   fetchTable?: () => Promise<PurchaseProductTable>;
   execute?: AmplitudeExecutor;
   prices: Record<string, number>;
-  /** 最近一个完结的 Denver 日 YYYY-MM-DD */
+  /** 最近一个完结的 Dawson 日 YYYY-MM-DD */
   today: () => string;
   now?: () => Date;
   maxRangeDays?: number;
@@ -474,8 +474,8 @@ export function createFetchDailyRevenue(deps: FetchDailyRevenueDeps) {
       .join(" + ");
 
     const source = deps.execute
-      ? `Amplitude Segmentation API（purchase_completed 按 product 分组 uniques），Daily Revenue = ${priceStr}，时区 America/Denver`
-      : `Amplitude 保存图表 xhd4uffg（purchase_completed 按 product 分档去重人数），Daily Revenue = ${priceStr}，时区 America/Denver`;
+      ? `Amplitude Segmentation API（purchase_completed 按 product 分组 uniques），Daily Revenue = ${priceStr}，时区 America/Dawson`
+      : `Amplitude 保存图表 xhd4uffg（purchase_completed 按 product 分档去重人数），Daily Revenue = ${priceStr}，时区 America/Dawson`;
     return {
       startDate,
       endDate,
@@ -498,7 +498,7 @@ export function createFetchDailyRevenue(deps: FetchDailyRevenueDeps) {
         pulledAt: deps.now?.() ?? new Date(),
         completeness: perDay.length === 0 ? "empty" : "complete",
         checks: [
-          "date range is normalized to completed Denver days",
+          "date range is normalized to completed Dawson days",
           "range length is within maxRangeDays",
           "revenue is computed from fixed product price table",
           ...(deps.execute ? ["purchase_completed is queried through the standard Amplitude metric executor"] : []),
@@ -521,9 +521,9 @@ export interface StripeRevenueDay {
 }
 
 export interface FetchStripeRevenueDeps {
-  /** 拉取 [startDate,endDate]（含端点，Denver 自然日）逐日真实收入。 */
+  /** 拉取 [startDate,endDate]（含端点，Dawson 自然日）逐日真实收入。 */
   fetchRange: (startDate: string, endDate: string) => Promise<Map<string, StripeRevenueDay>>;
-  /** 最近一个完结的 Denver 日 YYYY-MM-DD */
+  /** 最近一个完结的 Dawson 日 YYYY-MM-DD */
   today: () => string;
   now?: () => Date;
   maxRangeDays?: number;
@@ -585,7 +585,7 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
     }
 
     const source =
-      "Stripe 真实支付流水（succeeded 入账金额，已扣退款），按 America/Denver 自然日归集，与日报 Daily Revenue 同源";
+      "Stripe 真实支付流水（succeeded 入账金额，已扣退款），按 America/Dawson 自然日归集，与日报 Daily Revenue 同源";
     return {
       startDate,
       endDate,
@@ -606,7 +606,7 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
         pulledAt: deps.now?.() ?? new Date(),
         completeness: totalRevenue === 0 ? "empty" : "complete",
         checks: [
-          "date range is normalized to completed Denver days",
+          "date range is normalized to completed Dawson days",
           "range length is within maxRangeDays",
           "Stripe revenue is sourced from succeeded paid charges net of refunds",
         ],
@@ -616,7 +616,7 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
   };
 }
 
-// ── fetch_purchase_users：购买去重人数，与 UI/日报同源（chart bh0r0h4o）────
+// ── fetch_purchase_users：购买去重人数，与 UI/日报同源（chart 7n9n6eez）────
 
 export interface PurchaseUsersDay {
   date: string;
@@ -645,7 +645,7 @@ export interface FetchPurchaseUsersInput {
 export interface FetchPurchaseUsersDeps {
   fetchTable?: () => Promise<PurchaseUsersTable>;
   execute?: AmplitudeExecutor;
-  /** 最近一个完结的 Denver 日 YYYY-MM-DD */
+  /** 最近一个完结的 Dawson 日 YYYY-MM-DD */
   today: () => string;
   now?: () => Date;
   maxRangeDays?: number;
@@ -723,7 +723,7 @@ export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
     const notes: string[] = [...resolved.notes];
     if (missing.length) {
       notes.push(
-        `${deps.execute ? "缺少日期数据列" : "图表 bh0r0h4o 缺少日期列"}：${missing.join(", ")}。`,
+        `${deps.execute ? "缺少日期数据列" : "图表 7n9n6eez 缺少日期列"}：${missing.join(", ")}。`,
       );
     }
     if (span > 0) {
@@ -733,8 +733,8 @@ export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
     }
 
     const source = deps.execute
-      ? "Amplitude Segmentation API（purchase_completed 无分组 uniques），时区 America/Denver"
-      : "Amplitude 保存图表 bh0r0h4o（兼容路径），时区 America/Denver";
+      ? "Amplitude Segmentation API（purchase_completed 无分组 uniques），时区 America/Dawson"
+      : "Amplitude 保存图表 7n9n6eez（兼容路径），时区 America/Dawson";
     return {
       startDate,
       endDate,
@@ -748,7 +748,7 @@ export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
         metric: "Purchase_Users",
         metricVersion: deps.execute
           ? "purchase_users.amplitude-purchase_completed.v2"
-          : "purchase_users.amplitude-chart-bh0r0h4o.v1",
+          : "purchase_users.amplitude-chart-7n9n6eez.v2",
         input: { startDate, endDate },
         source,
         startDate,
@@ -756,7 +756,7 @@ export function createFetchPurchaseUsers(deps: FetchPurchaseUsersDeps) {
         pulledAt: deps.now?.() ?? new Date(),
         completeness: missing.length ? "partial" : sumOfDaily === 0 ? "empty" : "complete",
         checks: [
-          "date range is normalized to completed Denver days",
+          "date range is normalized to completed Dawson days",
           "range length is within maxRangeDays",
           "missing dates are reported instead of substituted",
         ],

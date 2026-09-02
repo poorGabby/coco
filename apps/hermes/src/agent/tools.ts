@@ -52,7 +52,7 @@ export const DAILY_REVENUE_TOOL: ToolDeclaration = {
   description:
     "计算 Daily Revenue（营收）。正式口径为 Amplitude purchase_completed Event Totals × $9.99。" +
     "固定读取正式 Revenue Chart，由标准函数把 Event Totals 乘以 $9.99；不回退到 Stripe 或 /api/2。" +
-    "时区 America/Denver。默认取最近完结日及 7 天前同日，可传 Chart 覆盖范围内的日期区间；返回美元 valuesByDate 与统一 WoW snapshot。" +
+    "时区 America/Dawson（固定 UTC-7）。默认取最近完结日及 7 天前同日，可传 Chart 覆盖范围内的日期区间；返回美元 valuesByDate 与统一 WoW snapshot。" +
     "【重要】凡是问「收入 / 营收 / revenue / 赚了多少钱 / GMV」一律用本工具，" +
     "不要用 fetch_amplitude_metric 的购买人数自行乘单价，也不要替换为 Stripe（口径不同）。",
   parameters: {
@@ -68,7 +68,7 @@ export const DAILY_REVENUE_TOOL: ToolDeclaration = {
 export const PURCHASE_USERS_TOOL: ToolDeclaration = {
   name: "fetch_purchase_users",
   description:
-    "购买人数固定读取正式 Amplitude Chart bh0r0h4o，由标准函数返回统一 snapshot；Chart 失败时直接报错。" +
+    "购买人数固定读取正式 Amplitude Chart 7n9n6eez，由标准函数返回统一 snapshot；Chart 失败时直接报错。" +
     "名称：first purchase purchasers。凡问「first purchase purchasers / 首次购买人数 / 购买成功数」一律用本工具，不要用 fetch_amplitude_metric。" +
     "注意：这是【人数】，不是订单数，也不能乘单价估收入（收入用 fetch_daily_revenue）。",
   parameters: {
@@ -165,7 +165,7 @@ export const AGENT_TOOL_DECLARATIONS: ToolDeclaration[] = [
 
 /**
  * 构建工具执行注册表：把声明映射到注入了 env 的后端实现。
- * `today` 语义 = 最近一个完结的 Denver 日 = amplitudeDateStr(-1)，与日报口径一致。
+ * `today` 语义 = 最近一个完结的 Dawson 日 = amplitudeDateStr(-1)，与日报口径一致。
  */
 export function buildToolRegistry(env: Env): ToolRegistry {
   const runFetchAmplitudeMetric = createFetchAmplitudeMetric({

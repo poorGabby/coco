@@ -17,26 +17,26 @@ const DAILY_NEW_USERS_CSV = `"\tNew Users (Daily)"
 "\tNone","\t240","\t273","\t280","\t15"
 `;
 
-test("resolveDailyCharts: 默认含 1n0bfs5k 与 bh0r0h4o", () => {
+test("resolveDailyCharts: 默认含 America/Dawson 的 New Users 与 Purchase Users 图表", () => {
   const charts = resolveDailyCharts();
   assert.deepEqual(
     charts.map((c) => c.id),
     DEFAULT_DAILY_CHARTS.map((c) => c.id),
   );
-  assert.ok(charts.some((c) => c.id === "1n0bfs5k"));
-  assert.ok(charts.some((c) => c.id === "bh0r0h4o"));
+  assert.ok(charts.some((c) => c.id === "odptyaey"));
+  assert.ok(charts.some((c) => c.id === "7n9n6eez"));
   const newUserRetention = charts.find((c) => c.role === "retention_new_user")!;
-  assert.equal(newUserRetention.id, "18lt8h9t");
+  assert.equal(newUserRetention.id, "lthx47q8");
   assert.equal(newUserRetention.title, "New User Retention");
   const dau = charts.find((c) => c.role === "dau")!;
   assert.equal(dau.id, "ilhu9t17");
   assert.equal(dau.title, "Daily Active Users (DAU) — Calendar Day");
-  const purchase = charts.find((c) => c.id === "bh0r0h4o")!;
+  const purchase = charts.find((c) => c.id === "7n9n6eez")!;
   assert.match(purchase.title, /购买去重人数/);
   assert.match(purchase.title, /非收入/);
 });
 
-test("extractTimeseries: 1n0bfs5k reads its single Daily Uniques row", () => {
+test("extractTimeseries: New Users Dawson chart reads its single Daily Uniques row", () => {
   const parsed = parseAmplitudeChartCsv(DAILY_NEW_USERS_CSV);
   assert.equal(parsed.kind, "timeseries");
   assert.equal(parsed.rows.length, 1);

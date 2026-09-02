@@ -112,11 +112,11 @@ export async function fetchStandardMetricSnapshots(
     () => registry.fetch_retention_metric({ metricName: "New_User_Retention" }),
     () => registry.fetch_retention_metric({ metricName: "Purchaser_Companion_Retention" }),
   ];
-  // Amplitude Dashboard REST API allows at most five concurrent requests per project.
-  // Use batches of four so one report still fetches every Chart exactly once without 429s.
+  // The saved Chart API can reject bursts below the documented project-wide ceiling.
+  // Use batches of two and let transient 429/5xx responses back off in the data layer.
   const calls: PromiseSettledResult<unknown>[] = [];
-  for (let index = 0; index < jobs.length; index += 4) {
-    calls.push(...await Promise.allSettled(jobs.slice(index, index + 4).map((job) => job())));
+  for (let index = 0; index < jobs.length; index += 2) {
+    calls.push(...await Promise.allSettled(jobs.slice(index, index + 2).map((job) => job())));
   }
 
   const unresolvedSnapshot = (
@@ -147,7 +147,7 @@ export async function fetchStandardMetricSnapshots(
         chartId: definition.chartId,
         input: { startDate: comparisonDate, endDate: currentDate, chartId: definition.chartId },
         source: "Amplitude Chart",
-        timezone: "America/Denver",
+        timezone: "America/Dawson",
         coverage: { startDate: comparisonDate, endDate: currentDate },
         pulledAt: new Date().toISOString(),
         fetchedAt: new Date().toISOString(),
