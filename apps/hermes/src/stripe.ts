@@ -10,7 +10,8 @@ import { reportDateOfEpochSec, reportMidnightUtcSec } from "./report-timezone.js
  * 收入工具都从这里取数，保证卡片与聊天的收入口径永远一致，不再各算各的。
  *
  * 口径：以 America/Dawson（固定 UTC-7）自然日归集 `succeeded && paid` 的 charge，
- * revenue = Σ(amount − amount_refunded)。时区与 Amplitude 日报保持一致。
+ * revenue = Σ(amount − amount_refunded)。退款归属于原始 Charge 创建日；
+ * 历史日期可能随该 Charge 后续退款而变化。时区与日报保持一致。
  */
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -46,7 +47,7 @@ function resolveProxyUrl(): string | undefined {
   );
 }
 
-interface StripeCharge {
+export interface StripeCharge {
   id: string;
   amount: number;
   amount_refunded?: number;
@@ -54,9 +55,37 @@ interface StripeCharge {
   status: string;
   paid: boolean;
   currency: string;
+  livemode: boolean;
 }
 
-function stripeGet(
+/** 将单笔 Stripe Charge 安全归入已预置的 Dawson 日桶。 */
+export function applyStripeCharge(
+  days: Map<string, StripeDailyRevenue>,
+  charge: StripeCharge,
+): void {
+  if (charge.status !== "succeeded" || !charge.paid) return;
+  if (!charge.livemode) {
+    throw new Error("Stripe test-mode charge cannot be included in production Daily Revenue");
+  }
+  if (charge.currency.toLowerCase() !== "usd") {
+    throw new Error(`Stripe Daily Revenue is USD-only; received ${charge.currency}`);
+  }
+  const refunded = charge.amount_refunded ?? 0;
+  if (!Number.isInteger(charge.amount) || !Number.isInteger(refunded) || charge.amount < 0 || refunded < 0 || refunded > charge.amount) {
+    throw new Error("Stripe charge contains an invalid amount or refund amount");
+  }
+  const day = reportDateOfEpochSec(charge.created);
+  const entry = days.get(day);
+  if (!entry) return;
+  const net = charge.amount - refunded;
+  entry.revenue = round2(entry.revenue + net / 100);
+  entry.refunded = round2(entry.refunded + refunded / 100);
+  entry.count += 1;
+  const priceLabel = (charge.amount / 100).toFixed(2);
+  entry.byPrice[priceLabel] = (entry.byPrice[priceLabel] ?? 0) + 1;
+}
+
+export function stripeGet(
   apiKey: string,
   path: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
@@ -73,7 +102,9 @@ function stripeGet(
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (c) => chunks.push(c as Buffer));
+        let size = 0;
+        res.on("data", (c) => { size += c.length; if (size > 16 * 1024 * 1024) { req.destroy(new Error("Stripe response exceeds 16 MiB")); return; } chunks.push(c as Buffer); });
+        res.on("error", reject);
         res.on("end", () => {
           try {
             resolve({
@@ -87,6 +118,9 @@ function stripeGet(
       },
     );
     req.on("timeout", () => req.destroy(new Error("Stripe request timeout (30s)")));
+    // Socket timeouts do not cover a stalled proxy/DNS connection; bound wall time too.
+    const deadline = setTimeout(() => req.destroy(new Error("Stripe request deadline (30s)")), 30_000);
+    req.on("close", () => clearTimeout(deadline));
     req.on("error", reject);
     req.end();
   });
@@ -114,6 +148,7 @@ export async function fetchStripeRevenueRange(
   }
 
   let after: string | undefined;
+  let paginationComplete = false;
   for (let page = 0; page < 100; page++) {
     const qs =
       `created[gte]=${gte}&created[lt]=${lt}&limit=100` +
@@ -125,22 +160,16 @@ export async function fetchStripeRevenueRange(
     }
     const data = (json.data as StripeCharge[]) ?? [];
     for (const c of data) {
-      if (c.status !== "succeeded" || !c.paid) continue;
-      const day = reportDateOfEpochSec(c.created);
-      const entry = days.get(day);
-      if (!entry) continue; // 落在区间外（分页边界）忽略
-      const refunded = c.amount_refunded ?? 0;
-      const net = c.amount - refunded;
-      entry.revenue = round2(entry.revenue + net / 100);
-      entry.refunded = round2(entry.refunded + refunded / 100);
-      entry.count += 1;
-      const priceLabel = (c.amount / 100).toFixed(2);
-      entry.byPrice[priceLabel] = (entry.byPrice[priceLabel] ?? 0) + 1;
+      applyStripeCharge(days, c);
     }
-    if (!json.has_more) break;
+    if (!json.has_more) {
+      paginationComplete = true;
+      break;
+    }
     after = data[data.length - 1]?.id;
-    if (!after) break;
+    if (!after) throw new Error("Stripe pagination returned has_more without a continuation id");
   }
+  if (!paginationComplete) throw new Error("Stripe charge query exceeded the 100-page safety limit");
 
   return days;
 }

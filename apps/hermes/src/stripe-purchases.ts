@@ -88,6 +88,14 @@ export async function fetchStripePurchaseRange(env: Env, startDate: string, endD
   return days;
 }
 
+/** WoW only needs these two completed days; avoid scanning the six unused days. */
+export async function fetchStripePurchaseComparison(env: Env, date: string): Promise<Map<string, StripePurchaseDay>> {
+  const days = await Promise.all(
+    [addDays(date, -7), date].map((day) => fetchStripePurchaseRange(env, day, day)),
+  );
+  return new Map(days.flatMap((day) => [...day]));
+}
+
 async function fetchStripePurchaseDay(env: Env, date: string): Promise<StripePurchaseDay> {
   const day = emptyDay(date);
   const gte = reportMidnightUtcSec(date);
@@ -137,14 +145,9 @@ export function stripePurchaseCounts(day: StripePurchaseDay | undefined) {
   return { total: new Set([...users.secondPet, ...treats]).size, secondPet: users.secondPet.size, treats: treats.size, pocket: users.pocket.size, stash: users.stash.size, bigBag: users.bigBag.size, secondPetQuantity: quantities.secondPet, pocketQuantity: quantities.pocket, stashQuantity: quantities.stash, bigBagQuantity: quantities.bigBag };
 }
 
-export function stripePurchaseRevenue(day: StripePurchaseDay | undefined): number {
-  const q = day?.quantities ?? emptyQuantities();
-  return Math.round((q.secondPet * 6.99 + q.pocket * 1.99 + q.stash * 4.99 + q.bigBag * 9.99) * 100) / 100;
-}
-
 export type StripePurchaseMetric = "second_pet" | "treats" | "pocket" | "stash" | "big_bag";
 export async function fetchStripePurchaseMetric(env: Env, metric: StripePurchaseMetric, date: string) {
-  const map = await fetchStripePurchaseRange(env, addDays(date, -7), date);
+  const map = await fetchStripePurchaseComparison(env, date);
   const current = stripePurchaseCounts(map.get(date));
   const previous = stripePurchaseCounts(map.get(addDays(date, -7)));
   const key = metric === "second_pet" ? "secondPet" : metric === "big_bag" ? "bigBag" : metric;

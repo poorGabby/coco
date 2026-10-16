@@ -37,29 +37,21 @@ function snapshotLine(s: ChartSnapshot): string {
 function buildMetricsMarkdown(snapshots: ChartSnapshot[], purchase?: DailyPurchaseCounts): string {
   const purchaseUsers = snapshots.find((s) => s.snapshot?.metricName === "Purchase_Users");
   const revenue = snapshots.find((s) => s.snapshot?.metricName === "Daily_Revenue");
-  const combinedRevenue = revenue && purchase && revenue.yesterdayValue != null
-    ? `$${(revenue.yesterdayValue + purchase.stripeRevenue).toFixed(2)} (WoW ${purchaseWowForDisplay(revenue, purchase)})`
+  const dailyRevenue = revenue?.yesterdayValue != null
+    ? `$${revenue.yesterdayValue.toFixed(2)} (WoW ${formatPct(revenue.changePct)})`
     : "$— (WoW N/A)";
   const lines = [
     `• **Purchasers** — First Purchase ${formatNumber(purchaseUsers?.yesterdayValue ?? null)} (${formatPct(purchaseUsers?.changePct ?? null)})` +
       (purchase ? ` | Second Adoption ${purchase.secondPet} (${formatPct(purchase.secondPetWow)}) | Treats ${purchase.treats} (${formatPct(purchase.treatsWow)}): Pocket ${purchase.pocket} / Stash ${purchase.stash} / Big Bag ${purchase.bigBag}` : " | Second Adoption — (N/A) | Treats — (N/A): Pocket — / Stash — / Big Bag —"),
-    `• **Daily Revenue:** ${combinedRevenue}`,
+    `• **Daily Revenue:** ${dailyRevenue}`,
+    "收入口径：Stripe 成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额；时区 America/Dawson。",
     ...snapshots.filter((s) => s !== purchaseUsers && s !== revenue).map(snapshotLine),
   ];
   const errorCount = snapshots.filter((s) => s.error).length;
   if (errorCount > 0) {
-    lines.push("", `⚠️ ${errorCount} 项指标拉取失败，请检查 Amplitude 配置。`);
+    lines.push("", `⚠️ ${errorCount} 项指标拉取失败，请检查对应数据源配置或权限。`);
   }
   return lines.join("\n");
-}
-
-function purchaseWowForDisplay(revenue: ChartSnapshot, purchase: DailyPurchaseCounts): string {
-  if (revenue.dayBeforeValue == null) return "N/A";
-  const current = revenue.yesterdayValue! + purchase.stripeRevenue;
-  const previous = revenue.dayBeforeValue + purchase.stripePreviousRevenue;
-  if (previous === 0) return "N/A";
-  const wow = Math.round(((current - previous) / previous) * 1000) / 10;
-  return `${wow > 0 ? "+" : ""}${wow.toFixed(1)}%`;
 }
 
 // ── 飞书卡片 JSON 2.0 组件 helper ──
@@ -86,7 +78,7 @@ function mkDivider(): Card {
 }
 
 function mkFooter(content: string): Card {
-  return { tag: "markdown", content: `<font color='grey'>${content}</font>` };
+  return mkMarkdown(content);
 }
 
 /** 构建飞书卡片 JSON 2.0 */
@@ -105,7 +97,7 @@ export function buildDailyCard(
   // ── 核心指标（可折叠面板，默认展开） ──
   bodyElements.push(
     mkCollapsible(
-      `📊 核心指标 · ${snapshots.filter((s) => !s.error).length} 项`,
+      "📊 核心指标",
       true,
       [mkMarkdown(buildMetricsMarkdown(snapshots, purchase))],
     ),
@@ -151,7 +143,7 @@ export function buildDailyCard(
   // ── 底部 ──
   bodyElements.push(mkDivider());
   bodyElements.push(
-    mkFooter(`📎 Amplitude Dashboard  ·  ${dateLabel}  ·  CoCo 自动生成`),
+    mkFooter(`📎 Amplitude 行为指标 + Stripe 收入  ·  ${dateLabel}  ·  CoCo 自动生成`),
   );
 
   return {

@@ -19,8 +19,8 @@ export type BusinessMetricDefinition = {
 };
 
 /**
- * Amplitude Dashboard Chart 是正式业务指标的数据源与验收基准。
- * 核心指标只能通过固定 Chart ID 的标准函数读取，并在访问或解析失败时 fail closed。
+ * 每个核心指标都必须使用这里声明的数据源与业务定义，并在访问或解析失败时 fail closed。
+ * 行为指标使用固定 Amplitude Chart；Daily Revenue 使用 Stripe 支付事实。
  */
 export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMetricDefinition> = {
   DAU: {
@@ -111,20 +111,18 @@ export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMet
     },
   },
   Daily_Revenue: {
-    chartId: "xqmzi8cs",
+    chartId: null,
     title: "Daily Revenue",
-    metricVersion: "daily-revenue.amplitude-chart-xqmzi8cs.wow.v3",
+    metricVersion: "daily-revenue.stripe-charge-date-net.v2",
     status: "confirmed",
     chartDefinition: {
-      event: "purchase_completed",
-      measure: "totals",
-      formula: "event totals × 9.99 USD",
-      unitPriceUsd: 9.99,
-      segment: "All Users",
-      interval: "daily",
+      source: "Stripe Charges API",
+      object: "charge",
+      filters: { status: "succeeded", paid: true, currency: "usd", livemode: true },
+      formula: "sum(amount - amount_refunded)",
+      dateAttribution: "charge created date",
       timezone: "America/Dawson",
-      filters: [],
-      groupBy: [],
+      comparison: "same completed calendar day seven days earlier",
     },
   },
 };

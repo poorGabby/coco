@@ -1,4 +1,4 @@
-import type { PurchaseProductTable, PurchaseUsersTable } from "../amplitude.js";
+import type { ChartSnapshot, PurchaseUsersTable } from "../amplitude.js";
 import {
   AmplitudeSkill,
   type AmplitudeQueryInput,
@@ -312,13 +312,19 @@ export function createFetchAmplitudeMetric(deps: FetchAmplitudeMetricDeps) {
   };
 }
 
-// ── fetch_daily_revenue：与日报同源的收入工具（chart xhd4uffg）──────────
+// ── fetch_daily_revenue：统一收入结果结构 ──────────────────────────────
 
 export interface RevenueDay {
   date: string;
   /** 各产品档：去重人数与该档收入 */
   byProduct: Record<string, { users: number; revenue: number }>;
   revenue: number;
+  /** Stripe 口径下为成功且已支付的 Charge 笔数。 */
+  chargeCount?: number;
+  /** Stripe 口径下为这些 Charge 当前累计退款金额。 */
+  refunded?: number;
+  /** Stripe 口径下为扣退款前金额。 */
+  grossRevenue?: number;
 }
 
 export interface FetchRevenueResult {
@@ -332,6 +338,8 @@ export interface FetchRevenueResult {
   source: string;
   notes?: string[];
   snapshot: DataSnapshotMeta;
+  /** 日报、卡片与 Gemini 共用的同一份收入快照。 */
+  chartSnapshot?: ChartSnapshot;
 }
 
 export interface FetchRevenueInput {
@@ -341,175 +349,7 @@ export interface FetchRevenueInput {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** 纯函数：按区间逐日计算收入 = Σ 单价×分档人数。 */
-export function computeRevenue(
-  table: PurchaseProductTable,
-  prices: Record<string, number>,
-  startDate: string,
-  endDate: string,
-): RevenueDay[] {
-  const dates = table.dates.filter((d) => d >= startDate && d <= endDate).sort();
-  return dates.map((date) => {
-    const byProduct: Record<string, { users: number; revenue: number }> = {};
-    let revenue = 0;
-    for (const [product, price] of Object.entries(prices)) {
-      const users = table.products[product]?.[date] ?? 0;
-      const rev = round2(users * price);
-      byProduct[product] = { users, revenue: rev };
-      revenue += rev;
-    }
-    return { date, byProduct, revenue: round2(revenue) };
-  });
-}
-
-/** 纯函数：某一天的总收入；该日不在表内返回 null。 */
-export function revenueForDate(
-  table: PurchaseProductTable,
-  prices: Record<string, number>,
-  date: string,
-): number | null {
-  if (!table.dates.includes(date)) return null;
-  let rev = 0;
-  for (const [product, price] of Object.entries(prices)) {
-    rev += (table.products[product]?.[date] ?? 0) * price;
-  }
-  return round2(rev);
-}
-
-export interface FetchDailyRevenueDeps {
-  fetchTable?: () => Promise<PurchaseProductTable>;
-  execute?: AmplitudeExecutor;
-  prices: Record<string, number>;
-  /** 最近一个完结的 Dawson 日 YYYY-MM-DD */
-  today: () => string;
-  now?: () => Date;
-  maxRangeDays?: number;
-}
-
-/**
- * 工厂：与日报同源的收入工具。数据取自保存图表 xhd4uffg（purchase_completed
- * 按 product 分档去重），收入 = Σ 单价×人数——与 report.ts 的口径一致。
- */
-export function createFetchDailyRevenue(deps: FetchDailyRevenueDeps) {
-  const maxRangeDays = deps.maxRangeDays ?? DEFAULT_MAX_RANGE_DAYS;
-
-  return async function fetchDailyRevenue(input: FetchRevenueInput): Promise<FetchRevenueResult> {
-    if (input.startDate !== undefined && !ISO_DATE.test(input.startDate)) {
-      throw new Error(`startDate must be YYYY-MM-DD, got: ${input.startDate}`);
-    }
-    if (input.endDate !== undefined && !ISO_DATE.test(input.endDate)) {
-      throw new Error(`endDate must be YYYY-MM-DD, got: ${input.endDate}`);
-    }
-
-    const lastCompleted = deps.today();
-    const resolved = resolveCompletedRange({
-      startDate: input.startDate,
-      endDate: input.endDate,
-      lastCompleted,
-      defaultStartOffsetDays: 0,
-    });
-    const { startDate, endDate } = resolved;
-    const span = daysBetween(startDate, endDate);
-    if (span > maxRangeDays) {
-      throw new Error(`date range ${span}d exceeds max ${maxRangeDays}d`);
-    }
-
-    let perDay: RevenueDay[];
-    let revEnd: number | null;
-    let revPrev: number | null;
-    if (deps.execute) {
-      const output = await deps.execute({
-        metricName: "Purchase_Completed",
-        startDate: addDays(startDate, -7),
-        endDate,
-        groupByProp: "product",
-        groupByType: "event",
-      });
-      const rows = new Map<string, RevenueDay>();
-      for (const [product, segment] of Object.entries(output.segments)) {
-        const price = deps.prices[product];
-        if (price == null) continue;
-        for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
-          const users = segment.dailyTrend[d] ?? 0;
-          const day = rows.get(d) ?? { date: d, byProduct: {}, revenue: 0 };
-          day.byProduct[product] = { users, revenue: round2(users * price) };
-          day.revenue = round2(day.revenue + users * price);
-          rows.set(d, day);
-        }
-      }
-      perDay = [...rows.values()].sort((a, b) => a.date.localeCompare(b.date));
-      revEnd = perDay.find((d) => d.date === endDate)?.revenue ?? null;
-      const comparisonDate = addDays(endDate, -7);
-      revPrev = 0;
-      let hasComparison = false;
-      for (const [product, segment] of Object.entries(output.segments)) {
-        const price = deps.prices[product];
-        const users = segment.dailyTrend[comparisonDate];
-        if (price == null || users == null) continue;
-        revPrev += users * price;
-        hasComparison = true;
-      }
-      revPrev = hasComparison ? round2(revPrev) : null;
-    } else {
-      if (!deps.fetchTable) throw new Error("fetchTable or execute is required");
-      const table = await deps.fetchTable();
-      perDay = computeRevenue(table, deps.prices, startDate, endDate);
-      revEnd = revenueForDate(table, deps.prices, endDate);
-      revPrev = revenueForDate(table, deps.prices, addDays(endDate, -7));
-    }
-    const totalRevenue = round2(perDay.reduce((acc, d) => acc + d.revenue, 0));
-
-    // WoW：endDate vs 7 天前同日（取全表，不受请求区间限制）；基期 0/缺失 → null
-    const wowPct =
-      revEnd != null && revPrev != null && revPrev > 0
-        ? Math.round(((revEnd - revPrev) / revPrev) * 1000) / 10
-        : null;
-
-    const notes: string[] = [...resolved.notes];
-    if (perDay.length === 0) {
-      notes.push(`图表中没有 ${startDate}~${endDate} 的数据列，请核对日期/年份是否正确。`);
-    }
-    const priceStr = Object.entries(deps.prices)
-      .map(([label, v]) => `$${v}×${label}人数`)
-      .join(" + ");
-
-    const source = deps.execute
-      ? `Amplitude Segmentation API（purchase_completed 按 product 分组 uniques），Daily Revenue = ${priceStr}，时区 America/Dawson`
-      : `Amplitude 保存图表 xhd4uffg（purchase_completed 按 product 分档去重人数），Daily Revenue = ${priceStr}，时区 America/Dawson`;
-    return {
-      startDate,
-      endDate,
-      prices: deps.prices,
-      perDay,
-      totalRevenue,
-      wowPct,
-      source,
-      notes: notes.length ? notes : undefined,
-      snapshot: buildSnapshotMeta({
-        tool: "fetch_daily_revenue",
-        metric: "Daily_Revenue",
-        metricVersion: deps.execute
-          ? "daily_revenue.amplitude-product-price-segmentation.v2"
-          : "daily_revenue.amplitude-product-price.v1",
-        input: { startDate, endDate },
-        source,
-        startDate,
-        endDate,
-        pulledAt: deps.now?.() ?? new Date(),
-        completeness: perDay.length === 0 ? "empty" : "complete",
-        checks: [
-          "date range is normalized to completed Dawson days",
-          "range length is within maxRangeDays",
-          "revenue is computed from fixed product price table",
-          ...(deps.execute ? ["purchase_completed is queried through the standard Amplitude metric executor"] : []),
-        ],
-        notes,
-      }),
-    };
-  };
-}
-
-// ── fetch_daily_revenue（Stripe 版）：真实支付流水，与日报同源 ──────────
+// ── fetch_daily_revenue：Stripe 支付流水，与日报同源 ──────────────────
 
 /** 单日 Stripe 收入（与 src/stripe.ts 的 StripeDailyRevenue 结构一致，避免循环依赖故此处重声明）。 */
 export interface StripeRevenueDay {
@@ -530,9 +370,8 @@ export interface FetchStripeRevenueDeps {
 }
 
 /**
- * 工厂：基于 Stripe 真实支付流水的收入工具。返回结构与 Amplitude 版
- * createFetchDailyRevenue 完全一致（FetchRevenueResult），使二者可无缝互换，
- * 从而让日报卡片与自由问答的收入口径保持唯一来源。
+ * 工厂：基于 Stripe 真实支付流水的唯一收入工具。
+ * 日报、卡片、分析和自由问答都消费同一个 FetchRevenueResult / chartSnapshot。
  */
 export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
   const maxRangeDays = deps.maxRangeDays ?? DEFAULT_MAX_RANGE_DAYS;
@@ -562,13 +401,14 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
     const perDay: RevenueDay[] = [];
     for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
       const day = map.get(d);
-      const byProduct: Record<string, { users: number; revenue: number }> = {};
-      if (day) {
-        for (const [price, n] of Object.entries(day.byPrice)) {
-          byProduct[price] = { users: n, revenue: round2(n * Number(price)) };
-        }
-      }
-      perDay.push({ date: d, byProduct, revenue: round2(day?.revenue ?? 0) });
+      perDay.push({
+        date: d,
+        byProduct: {},
+        revenue: round2(day?.revenue ?? 0),
+        chargeCount: day?.count ?? 0,
+        refunded: round2(day?.refunded ?? 0),
+        grossRevenue: round2((day?.revenue ?? 0) + (day?.refunded ?? 0)),
+      });
     }
     const totalRevenue = round2(perDay.reduce((acc, d) => acc + d.revenue, 0));
 
@@ -584,8 +424,34 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
       notes.push(`Stripe 在 ${startDate}~${endDate} 无成交入账，请核对日期/年份是否正确。`);
     }
 
+    const comparisonDate = addDays(endDate, -7);
     const source =
-      "Stripe 真实支付流水（succeeded 入账金额，已扣退款），按 America/Dawson 自然日归集，与日报 Daily Revenue 同源";
+      "Stripe Charges API（succeeded && paid，USD；按 Charge 创建日归属，amount - amount_refunded），America/Dawson";
+    const snapshot: DataSnapshotMeta = {
+      ...buildSnapshotMeta({
+        tool: "fetch_daily_revenue",
+        metric: "Daily_Revenue",
+        metricVersion: "daily-revenue.stripe-charge-date-net.v2",
+        input: { startDate, endDate },
+        source,
+        startDate,
+        endDate,
+        pulledAt: deps.now?.() ?? new Date(),
+        completeness: "complete",
+        checks: [
+          "date range is normalized to completed Dawson days",
+          "range length is within maxRangeDays",
+          "Stripe revenue is sourced from succeeded paid USD charges",
+          "refunds are deducted from the originating charge amount",
+        ],
+        notes,
+      }),
+      currentDate: endDate,
+      currentValue: revEnd,
+      comparisonDate,
+      comparisonValue: revPrev ?? null,
+      wowChange: wowPct,
+    };
     return {
       startDate,
       endDate,
@@ -595,23 +461,20 @@ export function createFetchStripeRevenue(deps: FetchStripeRevenueDeps) {
       wowPct,
       source,
       notes: notes.length ? notes : undefined,
-      snapshot: buildSnapshotMeta({
-        tool: "fetch_daily_revenue",
-        metric: "Daily_Revenue",
-        metricVersion: "daily_revenue.stripe.v1",
-        input: { startDate, endDate },
-        source,
-        startDate,
-        endDate,
-        pulledAt: deps.now?.() ?? new Date(),
-        completeness: totalRevenue === 0 ? "empty" : "complete",
-        checks: [
-          "date range is normalized to completed Dawson days",
-          "range length is within maxRangeDays",
-          "Stripe revenue is sourced from succeeded paid charges net of refunds",
-        ],
-        notes,
-      }),
+      snapshot,
+      chartSnapshot: {
+        chartId: "stripe-charges",
+        title: "Daily Revenue",
+        kind: "timeseries",
+        metricLabel: "USD net revenue",
+        yesterday: endDate,
+        dayBefore: comparisonDate,
+        yesterdayValue: revEnd,
+        dayBeforeValue: revPrev ?? null,
+        changePct: wowPct,
+        comparisonKind: "WoW",
+        snapshot,
+      },
     };
   };
 }

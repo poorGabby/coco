@@ -262,7 +262,7 @@ function timeseriesRow(metric: CoreBusinessMetric, rows: string[][]): {
   return {
     header,
     data: matches[0],
-    multiplier: metric === "Daily_Revenue" ? Number(cfg.unitPriceUsd) : 1,
+    multiplier: 1,
     expectedMeasure,
   };
 }
@@ -301,7 +301,6 @@ function parseTimeseries(
       `Chart measure is ${expectedMeasure}`,
       "required segment row is unique",
       "all requested dates are present and numeric",
-      ...(metric === "Daily_Revenue" ? ["purchase_completed Event Totals multiplied by fixed $9.99"] : []),
     ],
   };
 }

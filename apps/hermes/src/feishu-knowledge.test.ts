@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Env } from "./env.js";
+import { listWikiNodes } from "./feishu.js";
+import { buildWikiContext } from "./ask.js";
 import {
   FEISHU_DOCUMENT_MAX_CHARS,
   readFeishuDocument,
@@ -80,7 +82,7 @@ test("知识工具使用固定 Wiki cache，读取二次校验并截断正文", 
       rawReadCount += 1;
       return json({
         code: 0,
-        data: { content: `密码：should-not-leak\n${"文".repeat(FEISHU_DOCUMENT_MAX_CHARS + 5)}` },
+        data: { content: `密码：should-not-leak\n${"文".repeat(FEISHU_DOCUMENT_MAX_CHARS + 5)}🐾🐾🐾` },
       });
     }
     if (url.includes("/docx/v1/documents/wikiAllowed1/raw_content")) {
@@ -140,6 +142,20 @@ test("知识工具使用固定 Wiki cache，读取二次校验并截断正文", 
     /outside FEISHU_WIKI_SPACE_IDS allowlist/,
   );
   assert.equal(rawReadCount, 2, "allowlist 校验必须发生在正文读取之前");
+
+  assert.equal(document.offset, 0);
+  assert.equal(document.nextOffset, FEISHU_DOCUMENT_MAX_CHARS);
+  const next = await readFeishuDocument(env, results[0].token, document.nextOffset!);
+  assert.equal(next.nextOffset, null);
+  assert.equal(next.truncated, false);
+  const complete = document.content + next.content;
+  assert.equal([...complete].length, document.contentLength);
+  assert.ok(complete.endsWith(`${"文".repeat(10)}🐾🐾🐾`));
+  assert.doesNotMatch(complete, /should-not-leak/);
+  await assert.rejects(() => readFeishuDocument(env, results[0].token, document.contentLength), /outside the document/);
+
+  const context = await buildWikiContext({ ...env, feishuWikiDocTokens: [] }, "Dock 产品定位");
+  assert.ok(context.wikiText.includes(`来源：${results[0].url}`), "模型上下文必须包含可引用的文档链接");
 });
 
 test("空 allowlist、超长 query 和非法 token 均 fail closed", async () => {
@@ -150,4 +166,30 @@ test("空 allowlist、超长 query 和非法 token 均 fail closed", async () =>
     /at most 30 characters/,
   );
   await assert.rejects(() => readFeishuDocument(env, "../bad"), /Invalid Feishu/);
+  for (const offset of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(() => readFeishuDocument(env, "wikiAllowed1", offset), /offset must be/);
+  }
+});
+
+test("Wiki discovery includes subsequent pages and rejects repeated cursors", async (t) => {
+  const calls: URL[] = [];
+  let repeatCursor = false;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes("tenant_access_token")) return json({ code: 0, tenant_access_token: "tenant-test", expire: 7200 });
+    calls.push(url);
+    const secondPage = url.searchParams.has("page_token");
+    return json({ code: 0, data: {
+      items: [{ node_token: secondPage ? "second" : "first", obj_token: "document-object", obj_type: "docx", title: "Document" }],
+      has_more: !secondPage || repeatCursor,
+      page_token: "next+page/token",
+    } });
+  });
+  const nodes = await listWikiNodes(env, "allowed-space", "parent-node");
+  assert.deepEqual(nodes.map((node) => node.node_token), ["first", "second"]);
+  assert.equal(nodes[1].obj_token, "document-object");
+  assert.equal(calls[1].searchParams.get("page_token"), "next+page/token");
+  assert.ok(calls.every((url) => url.searchParams.get("parent_node_token") === "parent-node"));
+  repeatCursor = true;
+  await assert.rejects(() => listWikiNodes(env, "allowed-space"), /pagination cursor/);
 });

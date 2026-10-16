@@ -165,8 +165,9 @@ export function buildAnalysisPrompt(snapshots: ChartSnapshot[]): string {
     "```",
     "",
     "要求：",
+    "- 日报收入来自 Stripe 成功且已支付的 USD Charge，并扣除该 Charge 已退款金额；Purchase Completed / First Purchase 仍是 Amplitude 用户行为口径，不能与 Stripe Charge 笔数混作同一分母。没有同口径去重购买人数时，不分析客单价或 ARPPU；仅建议先核对相同渠道、时间及去重口径的数据。",
     "- alertCount 和 watchCount 必须与实际 alerts / watches 数组长度一致",
-    "- 至少 1 个 alert，至多 3 个；至多 6 个 watch",
+    "- 至多 3 个 alert、6 个 watch；没有达到条件的异常时返回空数组，禁止为了凑数量制造告警",
     "- 每个 alert 的 deepAnalysis 必须引用具体数字、做交叉指标关联分析",
     "- summary 要有高度概括，不堆砌数字",
     "- 所有核心指标一律写 WoW；普通指标解释为较上周同日；New User Retention / Purchaser Companion Retention 必须说明主值来自各自正式 Chart 的 overall/combined，而 WoW 来自最新成熟单日 cohort vs 7 天前同日 cohort 的 pp 变化",
@@ -232,23 +233,22 @@ export function fallbackAnalysis(
   }
 
   return {
-    alertCount: alerts.length || 1,
-    watchCount: watches.length || 1,
-    summary: `本日共拉取 ${valid.length} 项指标${errors.length ? `，${errors.length} 项失败` : ""}。${alerts.length > 0 ? `其中 ${alerts.length} 项触发告警。` : "所有指标正常。"}详细数据请见下方指标清单。`,
-    alerts:
-      alerts.length > 0
-        ? alerts
-        : [
-            {
-              title: "无显著告警",
-              value: "",
-              summary: "所有指标波动在正常范围内。",
-              deepAnalysis: "所有普通指标 WoW 与 New User Retention / Purchaser Companion Retention 单日 cohort WoW 变动均未触发告警阈值；两项 Retention 展示主值仍为各自正式 Chart 的 overall/combined。",
-            },
-          ],
+    alertCount: alerts.length,
+    watchCount: watches.length,
+    summary: `本日共拉取 ${valid.length} 项指标${errors.length ? `，${errors.length} 项失败` : ""}。${alerts.length > 0 ? `其中 ${alerts.length} 项触发告警。` : "可比较指标未触发告警阈值。"}详细数据请见下方指标清单。`,
+    alerts,
     watches,
-    hypotheses: "（Gemini 分析暂不可用，以上为 fallback 规则判定，仅供参考。）",
+    hypotheses: "以上按可比较指标和阈值列出变化。原因尚未验证，需先核对相同渠道、时间范围及去重口径的数据。",
   };
+}
+
+export function enforceAnalysisScope(analysis: DailyAnalysis, snapshots: ChartSnapshot[], reportMarkdown: string): DailyAnalysis {
+  // No matching order/frequency/ARPPU denominator is provided to this report.
+  // Reject the entire narrative rather than attempting to edit a generated financial claim.
+  if (/客单价|购买频[次率]|ARPPU|average\s+order\s+value|purchase\s+frequency/i.test(JSON.stringify(analysis))) {
+    return fallbackAnalysis(snapshots, reportMarkdown);
+  }
+  return { ...analysis, alertCount: analysis.alerts.length, watchCount: analysis.watches.length };
 }
 
 export async function analyzeDailySnapshots(
@@ -266,8 +266,10 @@ export async function analyzeDailySnapshots(
       "所有普通核心指标必须使用 snapshot 中的 WoW：当前数据日与 7 天前同日比较，并解释为‘较上周同日’。",
       "New User Retention 与 Purchaser Companion Retention 主值必须使用各自 snapshot 的 overall/combined rate；WoW 暂时使用 snapshot 标记为 single-cohort-week-over-week 的 wowChangePp。禁止用 wowCurrentRate 或 comparisonRate 覆盖主值。",
       "告警、关注项、摘要和正文必须复用各 snapshot 已计算好的 WoW，不得自行重算。",
+      "日报 Daily Revenue 直接使用 Stripe snapshot：成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额。必须复用 snapshot 数值和 WoW，不得用 Amplitude 购买事件或固定单价重新估算。Stripe 拉取失败时收入未知。没有符合阈值的异常时 alerts/watches 必须为空数组。",
     ].join("\n");
-    return await generateGeminiJson<DailyAnalysis>(env, systemPrompt, userPrompt);
+    const analysis = await generateGeminiJson<DailyAnalysis>(env, systemPrompt, userPrompt);
+    return enforceAnalysisScope(analysis, snapshots, reportMarkdown);
   } catch (err) {
     console.error("Gemini analysis failed, using fallback:", err instanceof Error ? err.message : String(err));
     // fallback：用规则判断告警

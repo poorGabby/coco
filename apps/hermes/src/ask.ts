@@ -146,7 +146,7 @@ export async function buildWikiContext(env: Env, question: string): Promise<{
       const wikiText = results
         .map((r, i) => {
           const label = r.heading !== r.docTitle ? `${r.docTitle} › ${r.heading}` : r.docTitle;
-          return `【文档 ${i + 1}】${label}\n${r.snippet}`;
+          return `【文档 ${i + 1}】${label}\n来源：${r.url}\n${r.snippet}`;
         })
         .join("\n\n---\n\n");
       return { wikiText, sources };

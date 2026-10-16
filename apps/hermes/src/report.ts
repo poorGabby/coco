@@ -11,8 +11,8 @@ import {
   type CoreBusinessMetric,
 } from "./metric-definitions.js";
 import type { StandardChartMetricResult } from "./standard-chart-metrics.js";
-import { addDays } from "./agent/tool-impls.js";
-import { fetchStripePurchaseRange, stripePurchaseCounts, stripePurchaseRevenue } from "./stripe-purchases.js";
+import { addDays, type FetchRevenueResult } from "./agent/tool-impls.js";
+import { fetchStripePurchaseComparison, stripePurchaseCounts } from "./stripe-purchases.js";
 
 export type { DailyAnalysis } from "./analyze.js";
 
@@ -37,8 +37,6 @@ export type DailyPurchaseCounts = Omit<ReturnType<typeof stripePurchaseCounts>, 
   pocketWow: number | null;
   stashWow: number | null;
   bigBagWow: number | null;
-  stripeRevenue: number;
-  stripePreviousRevenue: number;
 };
 
 function formatPurchasers(firstPurchase: ChartSnapshot | undefined, purchase?: DailyPurchaseCounts): string {
@@ -55,24 +53,20 @@ function purchaseWow(current: number, previous: number): number | null {
   return previous === 0 ? null : Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-function formatRevenue(firstPurchaseRevenue: ChartSnapshot | undefined, purchase?: DailyPurchaseCounts): string {
-  if (!firstPurchaseRevenue || !purchase || firstPurchaseRevenue.yesterdayValue == null) {
+function formatRevenue(revenue: ChartSnapshot | undefined): string {
+  if (revenue?.yesterdayValue == null) {
     return `• Daily Revenue: $— (WoW N/A)`;
   }
-  const current = Math.round((firstPurchaseRevenue.yesterdayValue + purchase.stripeRevenue) * 100) / 100;
-  const previous = firstPurchaseRevenue.dayBeforeValue == null
-    ? null
-    : Math.round((firstPurchaseRevenue.dayBeforeValue + purchase.stripePreviousRevenue) * 100) / 100;
-  return `• Daily Revenue: $${current.toFixed(2)} (WoW ${formatPct(previous == null ? null : purchaseWow(current, previous))})`;
+  return `• Daily Revenue: $${revenue.yesterdayValue.toFixed(2)} (WoW ${formatPct(revenue.changePct)})`;
 }
 
 async function fetchDailyPurchaseCounts(env: Env, reportDate: string): Promise<DailyPurchaseCounts | undefined> {
   try {
-    const data = await fetchStripePurchaseRange(env, addDays(reportDate, -7), reportDate);
+    const data = await fetchStripePurchaseComparison(env, reportDate);
     const current = stripePurchaseCounts(data.get(reportDate));
     const previous = stripePurchaseCounts(data.get(addDays(reportDate, -7)));
     const { total: _currentTotal, ...currentCounts } = current;
-    return { ...currentCounts, secondPetWow: purchaseWow(current.secondPet, previous.secondPet), treatsWow: purchaseWow(current.treats, previous.treats), pocketWow: purchaseWow(current.pocket, previous.pocket), stashWow: purchaseWow(current.stash, previous.stash), bigBagWow: purchaseWow(current.bigBag, previous.bigBag), stripeRevenue: stripePurchaseRevenue(data.get(reportDate)), stripePreviousRevenue: stripePurchaseRevenue(data.get(addDays(reportDate, -7))) };
+    return { ...currentCounts, secondPetWow: purchaseWow(current.secondPet, previous.secondPet), treatsWow: purchaseWow(current.treats, previous.treats), pocketWow: purchaseWow(current.pocket, previous.pocket), stashWow: purchaseWow(current.stash, previous.stash), bigBagWow: purchaseWow(current.bigBag, previous.bigBag) };
   } catch (err) {
     console.warn("[report] Stripe purchase metrics unavailable:", err instanceof Error ? err.message : err);
     return undefined;
@@ -146,7 +140,7 @@ export async function fetchStandardMetricSnapshots(
         metricName: metric,
         chartId: definition.chartId,
         input: { startDate: comparisonDate, endDate: currentDate, chartId: definition.chartId },
-        source: "Amplitude Chart",
+        source: metric === "Daily_Revenue" ? "Stripe Charges API" : "Amplitude Chart",
         timezone: "America/Dawson",
         coverage: { startDate: comparisonDate, endDate: currentDate },
         pulledAt: new Date().toISOString(),
@@ -186,6 +180,10 @@ export async function fetchStandardMetricSnapshots(
       const kind = metric.includes("Retention") ? "retention" : "timeseries";
       return unresolvedSnapshot(metric, call.reason, kind);
     }
+    if (metric === "Daily_Revenue") {
+      const result = call.value as FetchRevenueResult;
+      return result.chartSnapshot ?? unresolvedSnapshot(metric, "Stripe revenue result is missing chartSnapshot");
+    }
     return (call.value as StandardChartMetricResult).chartSnapshot;
   });
 }
@@ -204,7 +202,8 @@ export function buildReportMarkdown(
   const purchasers = snapshotByMetric(snapshots, "Purchase_Users");
   const revenue = snapshotByMetric(snapshots, "Daily_Revenue");
   lines.push(formatPurchasers(purchasers, purchase));
-  lines.push(formatRevenue(revenue, purchase));
+  lines.push(formatRevenue(revenue));
+  lines.push("收入口径：Stripe 成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额；时区 America/Dawson。");
 
   for (const s of snapshots) {
     if (s.snapshot?.metricName === "Purchase_Users" || s.snapshot?.metricName === "Daily_Revenue") continue;
@@ -237,7 +236,7 @@ export function buildReportMarkdown(
 
   const warnings = snapshots.filter((s) => s.error);
   if (warnings.length) {
-    lines.push("", "⚠️ 部分指标拉取失败，请检查 Amplitude 配置或权限。");
+    lines.push("", "⚠️ 部分指标拉取失败，请检查对应数据源配置或权限。");
   }
 
   return lines.join("\n");

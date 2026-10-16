@@ -238,28 +238,23 @@ export async function listWikiNodes(
   spaceId: string,
   parentNodeToken?: string,
 ): Promise<WikiNode[]> {
-  let path = `/wiki/v2/spaces/${spaceId}/nodes?page_size=50`;
-  if (parentNodeToken) {
-    path += `&parent_node_token=${parentNodeToken}`;
-  }
-  const data = (await feishuGet(env, path)) as {
-    data?: {
-      items?: Array<{
-        node_token: string;
-        obj_type: string;
-        title: string;
-        parent_node_token?: string;
-        has_child?: boolean;
-      }>;
+  const nodes: WikiNode[] = [];
+  const seenPages = new Set<string>();
+  let pageToken: string | undefined;
+  do {
+    const query = new URLSearchParams({ page_size: "50" });
+    if (parentNodeToken) query.set("parent_node_token", parentNodeToken);
+    if (pageToken) query.set("page_token", pageToken);
+    const response = await feishuGet(env, `/wiki/v2/spaces/${spaceId}/nodes?${query}`) as {
+      data?: { items?: WikiNode[]; has_more?: boolean; page_token?: string };
     };
-  };
-  return (data.data?.items ?? []).map((i) => ({
-    node_token: i.node_token,
-    obj_type: i.obj_type as WikiNode["obj_type"],
-    title: i.title,
-    parent_node_token: i.parent_node_token,
-    has_child: i.has_child,
-  }));
+    nodes.push(...(response.data?.items ?? []));
+    if (!response.data?.has_more) break;
+    pageToken = response.data.page_token;
+    if (!pageToken || seenPages.has(pageToken)) throw new Error("Invalid Feishu Wiki pagination cursor");
+    seenPages.add(pageToken);
+  } while (pageToken);
+  return nodes;
 }
 
 /** 递归获取空间下所有可读文档节点 */
