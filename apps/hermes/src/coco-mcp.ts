@@ -125,10 +125,11 @@ export function createCocoMcpServer(env: Env): McpServer {
     "fetch_retention_metric",
     {
       description:
-        "读取正式 Amplitude Retention Chart /query 的 New User 或 Purchaser Companion D1/D3/D7，" +
-        "主值返回 Breakdown Table 第一行 overall/combined 的 numerator、denominator、rate；WoW 独立使用最新成熟单日 cohort vs 7 天前同日 cohort。禁止 cohort rate 覆盖主值及 /api/2 fallback。",
+        "New User Retention：仅有 User ID 的新用户，以已完结观察日为准，D1/D3/D7 各读观察日减 1/3/7 天的 cohort；WoW 将该 cohort 和观察日同时前移七天，返回 pp。" +
+        "Purchaser Companion Retention 保留 overall/combined 主值及原有 cohort WoW。禁止混用两种主值或 /api/2 fallback。",
       inputSchema: {
         metricName: z.enum(["New_User_Retention", "Purchaser_Companion_Retention"]),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("New User Retention 已完结回访观察日；默认最近完结美区日"),
       },
     },
     async (args) => {

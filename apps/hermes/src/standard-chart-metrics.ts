@@ -1,4 +1,5 @@
 import type { Env } from "./env.js";
+import { buildNewUserRetentionFromCsv } from "./retention-daily-cohorts.js";
 import { amplitudeDateStr, decodeCsvPayload, parseCsvRows, toNumber, type ChartSnapshot } from "./amplitude.js";
 import {
   BUSINESS_METRIC_DEFINITIONS,
@@ -505,7 +506,14 @@ export async function fetchStandardChartMetric(
   if (!definition.chartId) throw new Error(`${metricName}: fixed formal Chart ID is missing`);
   const chartId = definition.chartId;
   const fetchedAt = new Date();
-  const isRetention = metricName === "New_User_Retention" || metricName === "Purchaser_Companion_Retention";
+  if (metricName === "New_User_Retention") {
+    return buildNewUserRetentionFromCsv(
+      await fetchChartRows(env, chartId),
+      input.endDate ?? amplitudeDateStr(-1),
+      { fetchedAt },
+    );
+  }
+  const isRetention = metricName === "Purchaser_Companion_Retention";
 
   if (isRetention) {
     const data = await fetchRetentionChartData(env, chartId);

@@ -57,7 +57,7 @@ export interface DataSnapshotMeta {
   comparisonValue?: number | null;
   wowChange?: number | null;
   /** Explicit Retention value/comparison semantics. */
-  valueScope?: "overall-combined";
+  valueScope?: "overall-combined" | "daily-cohort-per-day";
   wowScope?: "single-cohort-week-over-week";
   /** Legacy retention cohort fields. Formal overall/combined retention leaves these unset. */
   currentCohort?: string;
@@ -66,15 +66,17 @@ export interface DataSnapshotMeta {
   retention?: {
     cohortDate: string | null;
     /** Formal Breakdown Table scope. */
-    scope?: "overall-combined";
+    scope?: "overall-combined" | "daily-cohort-per-day";
     currentPeriod?: { startDate: string; endDate: string } | null;
     comparisonPeriod?: { startDate: string; endDate: string } | null;
     /** Availability of a future previous-overall comparison, independent of cohort WoW. */
     overallComparisonAvailability?: "available" | "unavailable";
-    valueScope?: "overall-combined";
+    valueScope?: "overall-combined" | "daily-cohort-per-day";
     wowScope?: "single-cohort-week-over-week";
     currentCohort?: string | null;
     comparisonCohort?: string | null;
+    observationDate?: string;
+    comparisonObservationDate?: string;
     calculation: "n-day" | "rolling" | "bracket" | "unresolved";
     points: Record<"D1" | "D3" | "D7", {
       numerator: number | null;
@@ -82,6 +84,10 @@ export interface DataSnapshotMeta {
       rate: number | null;
       currentValue?: number | null;
       mature: boolean;
+      cohortDate?: string;
+      comparisonCohortDate?: string;
+      observationDate?: string;
+      comparisonObservationDate?: string;
       /** WoW-only current cohort fields; never used as the headline value. */
       wowCurrentNumerator?: number | null;
       wowCurrentDenominator?: number | null;

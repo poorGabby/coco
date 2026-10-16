@@ -105,7 +105,7 @@ test("Amplitude Chart requests retry a transient 429", async (t) => {
   assert.equal(result.snapshot.currentValue, 41);
 });
 
-test("Retention standard function returns exact overall/combined Chart JSON numerator/outof/rate", async (t) => {
+test("Purchaser retention preserves exact overall/combined headline and independent cohort WoW", async (t) => {
   const originalFetch = globalThis.fetch;
   const requestedUrls: string[] = [];
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -161,9 +161,9 @@ test("Retention standard function returns exact overall/combined Chart JSON nume
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
 
-  const result = await fetchStandardChartMetric(env, "New_User_Retention");
+  const result = await fetchStandardChartMetric(env, "Purchaser_Companion_Retention");
   assert.equal(requestedUrls.length, 1);
-  assert.match(requestedUrls[0], /amplitude\.com\/api\/3\/chart\/lthx47q8\/query/);
+  assert.match(requestedUrls[0], /amplitude\.com\/api\/3\/chart\/v5i4q52e\/query/);
   assert.deepEqual(result.retention?.points.D3, {
     numerator: 18282,
     denominator: 35320,
@@ -219,7 +219,7 @@ test("Retention fails closed when the saved Chart contains multiple return event
   }), { status: 200, headers: { "content-type": "application/json" } });
 
   await assert.rejects(
-    () => fetchStandardChartMetric(env, "New_User_Retention"),
+    () => fetchStandardChartMetric(env, "Purchaser_Companion_Retention"),
     /retention JSON structure changed/,
   );
 });
@@ -298,7 +298,7 @@ test("Retention fails closed when an overall/combined requested day is incomplet
   }), { status: 200, headers: { "content-type": "application/json" } });
 
   await assert.rejects(
-    () => fetchStandardChartMetric(env, "New_User_Retention"),
+    () => fetchStandardChartMetric(env, "Purchaser_Companion_Retention"),
     /overall combined D7 is incomplete/,
   );
 });

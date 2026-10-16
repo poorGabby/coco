@@ -21,7 +21,7 @@ Retention 只使用 `/query` 的结构化 JSON；禁止混用 `/csv`。其他 CS
 | `ilhu9t17` | Daily Active Users (DAU) — Calendar Day | timeseries | 日 | `_active` uniques；America/Dawson calendar day；无 rolling average；单行 `None` |
 | `z9j6r8us` | WAU | timeseries | **周** | 需要跳过未完结周 |
 | `odptyaey` | New Users (Daily) | timeseries | 日 | `_new` Daily Uniques；All Users；America/Dawson；current 与 7 天前同日来自同一次 `/query` |
-| `lthx47q8` | New User Retention | retention (N-Day) | Daily | `_new → companion_alive_daily`; Last 30 Days；America/Dawson；All Users segment; `/query` overall/combined D1/D3/D7 |
+| `lthx47q8` | New User Retention | retention (N-Day) | Daily | `_new` + `user_id is not (none)` → `companion_alive_daily`; America/Dawson；All Users；CSV 每个 Day N 分别读取观察日前 N 天的单日 cohort，WoW 将 cohort/观察日同时前移七天；候选尚未发布 |
 | `xhd4uffg` | Purchase Completed | timeseries (分段) | 日 | ⚠️ 独立处理：不通过通用 parser，`deriveRevenueSnapshot` 独占总收入计算 |
 | `v5i4q52e` | Purchaser Companion Retention | retention (N-Day) | Last 30 days | `/query` overall/combined；purchase_completed >=1 during Last 365 days；America/Dawson |
 | *(derived)* | Daily Revenue | 计算值 | 日 | `xhd4uffg` 独立拉取，9.99/6.99 分段 × 人数求和 |

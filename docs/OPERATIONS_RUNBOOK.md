@@ -95,7 +95,7 @@ bash scripts/deploy.sh update-only
 
 ### 留存 WoW 异常
 
-检查正式 New User Retention Chart `lthx47q8` 的 `/query` 结果和 Purchaser Companion Retention Chart 的 `series.combined` 是否包含 D1/D3/D7 完整 `count/outof`，且 `incomplete=false`。New User Retention 固定读取 All Users（segment 0），忽略 No_India 对照分组；主值必须来自 combined；WoW 暂时检查最新成熟单日 cohort 与 7 天前同日 cohort 两侧 D1/D3/D7 均完整，且不得覆盖主值。
+New User Retention 新口径候选：检查 `lthx47q8` CSV 元数据含起始事件 `user_id is not (none)`，All Users 对应的单日 cohort 行有 Users 和 Day N 完整数值。以已完结观察日 R 为锚，D1/D3/D7 分别读取 R−1/R−3/R−7 的 cohort，WoW 各自比较七天前的对应 cohort。缺失或未完结时不回退到更早日期。正式图表筛选和候选代码均需发布后才代表线上切换。Purchaser Companion Retention 继续核对 `/query` 的 `series.combined` 完整 `count/outof` 和既有独立 cohort WoW。
 
 ## 7. 变更纪律
 
@@ -115,3 +115,13 @@ bash scripts/deploy.sh update-only
 - 若 GCE 与 Cloud Run 同时接收同一飞书事件，存在重复回复风险，应明确唯一主入口。
 - 多个历史脚本包含个人路径。
 - Cloud Run 会话和知识库缓存仅在内存中。
+## 2026-10-16 New User Retention release baseline
+
+- Production source was recovered from successful Cloud Build `ac6a7929-a307-4cff-9ebd-d8d417c10126` in `us-central1`, matching the image of `hermes-report-user-summary-0914` (`sha256:b3cde2fbc0b8ed430aa763a86239890c06daad85f6c635894eef585d118e3a00`). The older handover clone must not be deployed directly.
+- The retention change is merged on that production baseline. Existing Stripe net revenue, database tools, user summaries, export pagination, callback authorization and single-chat delivery are preserved. Purchaser retention is unchanged.
+- New User Retention uses `_new` with `user_id is not (none)`, `companion_alive_daily`, strict calendar N-day retention in America/Dawson. For completed observation day R, D1/D3/D7 select R-1/R-3/R-7 independently. WoW moves both dates back seven days and reports percentage-point changes.
+- Full merged regression suite: 91 tests passed; TypeScript passed. This is not by itself proof of deployment or actual message delivery.
+- Deployment identity is the existing `hermes-deployer-20260917` service account, used through the isolated local configuration documented by the handover. Never publish authentication directories or keys. GitHub push is not automatic Cloud Run deployment.
+- Release procedure: save the matching Amplitude starting-event filter, verify real CSV through the parser, build a versioned image, create a no-traffic candidate preserving all current configuration, verify health and read-only report, then switch traffic. Preserve `hermes-report-user-summary-0914` for rollback. Do not change Scheduler, IAM, Secrets, or the GCE market-video module for this release.
+- Real preview files and aggregate business data remain local and are excluded from this public repository.
+

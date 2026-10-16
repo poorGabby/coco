@@ -55,6 +55,10 @@ test("Amplitude behavior metrics and Stripe revenue definitions are recorded sep
   assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.retentionMethod, "N-day");
   assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.interval, "daily");
   assert.deepEqual(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.days, [1, 3, 7]);
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.valueScope, "daily-cohort-per-day");
+  assert.deepEqual(BUSINESS_METRIC_DEFINITIONS.New_User_Retention.chartDefinition.filters,
+    [{ property: "user_id", operator: "is not", values: ["(none)"], appliesTo: "startEvent" }]);
+  assert.equal(BUSINESS_METRIC_DEFINITIONS.Purchaser_Companion_Retention.valueScope, "overall-combined");
   assert.equal(BUSINESS_METRIC_DEFINITIONS.Purchaser_Companion_Retention.title, "Purchaser Companion Retention");
 });
 

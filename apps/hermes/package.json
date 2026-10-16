@@ -10,7 +10,7 @@
     "ask": "tsx src/cli.ts ask",
     "ask:agent": "tsx agent-smoke.ts",
     "test:amplitude": "tsx src/cli.ts test-amplitude",
-    "test:agent": "node --import tsx --test src/agent/tool-impls.test.ts src/agent/mcp/registry.test.ts src/business-db.test.ts src/subscription.test.ts src/comparison.test.ts src/daily-charts.test.ts src/daily-target.test.ts src/feishu-crypto.test.ts src/feishu-knowledge.test.ts src/metric-definitions.test.ts src/report-timezone.test.ts src/report.test.ts src/amplitude-explore.test.ts src/standard-chart-metrics.test.ts src/stripe-revenue.test.ts src/stripe-purchases.test.ts src/takeover-version.test.ts"
+    "test:agent": "node --import tsx --test src/agent/tool-impls.test.ts src/agent/mcp/registry.test.ts src/business-db.test.ts src/subscription.test.ts src/comparison.test.ts src/daily-charts.test.ts src/daily-target.test.ts src/feishu-crypto.test.ts src/feishu-knowledge.test.ts src/metric-definitions.test.ts src/report-timezone.test.ts src/report.test.ts src/amplitude-explore.test.ts src/standard-chart-metrics.test.ts src/retention-daily-cohorts.test.ts src/stripe-revenue.test.ts src/stripe-purchases.test.ts src/takeover-version.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

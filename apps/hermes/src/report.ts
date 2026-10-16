@@ -103,7 +103,7 @@ export async function fetchStandardMetricSnapshots(
     () => registry.fetch_amplitude_metric({ metricName: "New_Users", startDate: comparisonDate, endDate: currentDate }),
     () => registry.fetch_purchase_users({ startDate: comparisonDate, endDate: currentDate }),
     () => registry.fetch_daily_revenue({ startDate: comparisonDate, endDate: currentDate }),
-    () => registry.fetch_retention_metric({ metricName: "New_User_Retention" }),
+    () => registry.fetch_retention_metric({ metricName: "New_User_Retention", endDate: currentDate }),
     () => registry.fetch_retention_metric({ metricName: "Purchaser_Companion_Retention" }),
   ];
   // The saved Chart API can reject bursts below the documented project-wide ceiling.
@@ -201,9 +201,11 @@ export function buildReportMarkdown(
 
   const purchasers = snapshotByMetric(snapshots, "Purchase_Users");
   const revenue = snapshotByMetric(snapshots, "Daily_Revenue");
-  lines.push(formatPurchasers(purchasers, purchase));
-  lines.push(formatRevenue(revenue));
-  lines.push("收入口径：Stripe 成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额；时区 America/Dawson。");
+  if (purchasers || purchase) lines.push(formatPurchasers(purchasers, purchase));
+  if (revenue) {
+    lines.push(formatRevenue(revenue));
+    lines.push("收入口径：Stripe 成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额；时区 America/Dawson。");
+  }
 
   for (const s of snapshots) {
     if (s.snapshot?.metricName === "Purchase_Users" || s.snapshot?.metricName === "Daily_Revenue") continue;
@@ -219,7 +221,10 @@ export function buildReportMarkdown(
         const current = point.rate == null ? "—" : `${(point.rate * 100).toFixed(1)}%`;
         const pp = point.wowChangePp;
         const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
-        lines.push(`• ${label} — Day ${day.slice(1)}: ${current} (${wow})`);
+        const dates = point.cohortDate
+          ? ` · ${point.cohortDate} 有 User ID 新用户 → ${point.observationDate} 回访；上周 ${point.comparisonCohortDate} → ${point.comparisonObservationDate}`
+          : "";
+        lines.push(`• ${label} — Day ${day.slice(1)}: ${current} (${wow})${dates}`);
       }
       continue;
     }

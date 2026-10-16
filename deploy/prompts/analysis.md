@@ -36,7 +36,7 @@
 指标比较口径
 
 DAU、New Users、Purchase Users、Daily Revenue 统一使用 WoW：当前美区数据日 vs 7 天前同日。
-New User Retention（Chart `lthx47q8`，`_new → companion_alive_daily`，N-day / Daily，固定 All Users segment）和 Purchaser Companion Retention 的主值均使用正式 Chart Breakdown Table 第一行 overall/combined。WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 展示百分点差。必须区分 valueScope 与 wowScope，禁止 cohort rate 覆盖主值。
+New User Retention（Chart `lthx47q8`，仅起始事件有 User ID 的新用户，N-day / Daily，All Users）主值为 daily-cohort-per-day：D1/D3/D7 分别使用完结观察日前 1/3/7 天的单日新增 cohort，WoW 将各自 cohort 和观察日都前移七天。展示每点日期和百分点差。Purchaser Companion Retention 主值仍为正式 Chart overall/combined，WoW 保留原独立 cohort 方式。
 展示与行文规则：
 普通指标的标题、正文、告警和关注卡片一律写「WoW」和「较上周同日」；Retention 明确主值为 overall、WoW 为单日 cohort 周同比。所有判断必须复用 snapshot 已计算的 WoW。
 数值展示格式示例：

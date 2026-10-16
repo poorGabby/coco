@@ -79,6 +79,18 @@ function retentionResponse(): Response {
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
+function newUserRetentionResponse(): Response {
+  const rows = [
+    ["New User Retention"], ["[Amplitude] New User", "user_id is not (none)"],
+    ["companion_alive_daily"], ["N-Day Retention"],
+    ["Segment", "Start Date", "Users", ...Array.from({ length: 8 }, (_, d) => `Day ${d}`)],
+    ...["2026-08-18", "2026-08-16", "2026-08-12", "2026-08-11", "2026-08-09", "2026-08-05"]
+      .map(date => ["All Users", date, "100", ...Array.from({ length: 8 }, () => "80")]),
+  ];
+  const csv = rows.map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
+  return new Response(JSON.stringify({ data: csv }), { status: 200 });
+}
+
 function dailyUniquesQueryResponse(values: number[], queryDates = dates): Response {
   return new Response(JSON.stringify({
     data: {
@@ -110,12 +122,17 @@ test("a stale DAU fails independently without moving the report off its Dawson c
     }
     if (url.includes("odptyaey")) return dailyUniquesQueryResponse(dates.map((_, index) => 100 + index));
     if (url.includes("7n9n6eez")) return csvResponse("Purchase Users", "Uniques", "All Users");
-    if (url.includes("lthx47q8") || url.includes("v5i4q52e")) return retentionResponse();
+    if (url.includes("lthx47q8")) return newUserRetentionResponse();
+    if (url.includes("v5i4q52e")) return retentionResponse();
     throw new Error(`unexpected URL ${url}`);
   };
 
   const snapshots = await fetchStandardMetricSnapshots(env, "2026-08-19");
   assert.equal(snapshots.length, 6);
+  const newRetention = snapshots.find(snapshot => snapshot.snapshot?.metricName === "New_User_Retention");
+  assert.equal(newRetention?.error, undefined);
+  assert.equal(newRetention?.snapshot?.retention?.observationDate, "2026-08-19");
+  assert.equal(newRetention?.snapshot?.retention?.points.D1.cohortDate, "2026-08-18");
 
   const dau = snapshots.find((snapshot) => snapshot.snapshot?.metricName === "DAU");
   assert.match(dau?.error ?? "", /outside Chart coverage .*2026-08-18/);

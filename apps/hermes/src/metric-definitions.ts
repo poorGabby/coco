@@ -10,7 +10,7 @@ export type BusinessMetricDefinition = {
   chartId: string | null;
   title: string;
   metricVersion: string;
-  valueScope?: "overall-combined";
+  valueScope?: "overall-combined" | "daily-cohort-per-day";
   wowScope?: "single-cohort-week-over-week";
   status: "confirmed" | "unresolved";
   /** UI source-of-truth captured from the approved Amplitude Dashboard screenshots. */
@@ -77,8 +77,8 @@ export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMet
   New_User_Retention: {
     chartId: "lthx47q8",
     title: "New User Retention",
-    metricVersion: "new-user-retention.amplitude-chart-lthx47q8.overall-value.cohort-wow.v3",
-    valueScope: "overall-combined",
+    metricVersion: "new-user-retention.amplitude-chart-lthx47q8.user-id.daily-cohort-wow.v4",
+    valueScope: "daily-cohort-per-day",
     wowScope: "single-cohort-week-over-week",
     status: "confirmed",
     chartDefinition: {
@@ -89,7 +89,10 @@ export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMet
       days: [1, 3, 7],
       segment: "All Users",
       timezone: "America/Dawson",
-      filters: [],
+      filters: [{ property: "user_id", operator: "is not", values: ["(none)"], appliesTo: "startEvent" }],
+      observationDate: "latest completed Dawson calendar day, or explicit completed endDate",
+      cohortSelection: "D1=observationDate-1; D3=observationDate-3; D7=observationDate-7",
+      comparison: "same day-N cohort and observation date seven days earlier; percentage-point difference",
     },
   },
   Purchaser_Companion_Retention: {

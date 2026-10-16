@@ -4,6 +4,7 @@ import { getDocumentRawContent } from "./feishu.js";
 import { generateGeminiReply } from "./llm.js";
 import { buildReportMarkdown, fetchStandardMetricSnapshots } from "./report.js";
 import { ensureWikiCache, searchFulltext } from "./wiki-cache.js";
+import { dailyCohortContext } from "./retention-daily-cohorts.js";
 
 function shanghaiToday(): string {
   const d = new Date();
@@ -25,6 +26,7 @@ function snapshotToContextLine(s: ChartSnapshot): string {
     const retention = s.snapshot.retention;
     return (["D1", "D3", "D7"] as const).map((day) => {
       const point = retention.points[day];
+      if (retention.valueScope === "daily-cohort-per-day") return dailyCohortContext(s.title, day, point);
       const pp = point.wowChangePp;
       const period = retention.currentPeriod
         ? `${retention.currentPeriod.startDate}~${retention.currentPeriod.endDate}`

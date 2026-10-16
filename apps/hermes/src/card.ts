@@ -28,7 +28,10 @@ function snapshotLine(s: ChartSnapshot): string {
       const rate = point.rate == null ? "—" : `${(point.rate * 100).toFixed(1)}%`;
       const pp = point.wowChangePp;
       const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
-      return `• **${s.title} — Day ${day.slice(1)}**: ${rate}  (${wow})`;
+      const dates = point.cohortDate
+        ? `\n  ${point.cohortDate} 有 User ID 新用户 → ${point.observationDate} 回访；上周 ${point.comparisonCohortDate} → ${point.comparisonObservationDate}`
+        : "";
+      return `• **${s.title} — Day ${day.slice(1)}**: ${rate}  (${wow})${dates}`;
     }).join("\n");
   }
   return `• **${s.title}**: ${formatNumber(s.yesterdayValue)}  (WoW ${formatPct(s.changePct)})`;
@@ -41,10 +44,9 @@ function buildMetricsMarkdown(snapshots: ChartSnapshot[], purchase?: DailyPurcha
     ? `$${revenue.yesterdayValue.toFixed(2)} (WoW ${formatPct(revenue.changePct)})`
     : "$— (WoW N/A)";
   const lines = [
-    `• **Purchasers** — First Purchase ${formatNumber(purchaseUsers?.yesterdayValue ?? null)} (${formatPct(purchaseUsers?.changePct ?? null)})` +
-      (purchase ? ` | Second Adoption ${purchase.secondPet} (${formatPct(purchase.secondPetWow)}) | Treats ${purchase.treats} (${formatPct(purchase.treatsWow)}): Pocket ${purchase.pocket} / Stash ${purchase.stash} / Big Bag ${purchase.bigBag}` : " | Second Adoption — (N/A) | Treats — (N/A): Pocket — / Stash — / Big Bag —"),
-    `• **Daily Revenue:** ${dailyRevenue}`,
-    "收入口径：Stripe 成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额；时区 America/Dawson。",
+    ...(purchaseUsers || purchase ? [`• **Purchasers** — First Purchase ${formatNumber(purchaseUsers?.yesterdayValue ?? null)} (${formatPct(purchaseUsers?.changePct ?? null)})` +
+      (purchase ? ` | Second Adoption ${purchase.secondPet} (${formatPct(purchase.secondPetWow)}) | Treats ${purchase.treats} (${formatPct(purchase.treatsWow)}): Pocket ${purchase.pocket} / Stash ${purchase.stash} / Big Bag ${purchase.bigBag}` : " | Second Adoption — (N/A) | Treats — (N/A): Pocket — / Stash — / Big Bag —")] : []),
+    ...(revenue ? [`• **Daily Revenue:** ${dailyRevenue}`, "收入口径：Stripe 成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额；时区 America/Dawson。"] : []),
     ...snapshots.filter((s) => s !== purchaseUsers && s !== revenue).map(snapshotLine),
   ];
   const errorCount = snapshots.filter((s) => s.error).length;

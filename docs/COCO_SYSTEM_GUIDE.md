@@ -59,7 +59,7 @@ Cloud Run 的 `/mcp` 使用 `COCO_MCP_KEY` Bearer 鉴权，当前注册：
 - `fetch_purchase_users`：查询购买去重人数。
 - `build_daily_report_card`：生成日报卡片 JSON，不负责发送。
 
-日期默认使用 `America/Dawson`（固定 UTC-7）最近完结日。Agent 约束要求一次只查一个指标、数字必须来自工具结果、WoW 基期为 0 时显示 N/A；New User Retention 使用正式 Chart `lthx47q8`（`_new → companion_alive_daily`，N-day / Daily，固定 All Users segment），主值读取 overall/combined，WoW 暂时独立使用最新成熟单日 cohort vs 7 天前同日 cohort；Purchaser Companion Retention 保持使用其现有正式 Chart。
+日期默认使用 `America/Dawson`（固定 UTC-7）最近完结日。Agent 一次只查一个指标，数字来自工具结果。New User Retention 使用 Chart `lthx47q8` CSV，`_new` 必须带 `user_id is not (none)`，回访事件 `companion_alive_daily`；D1/D3/D7 各自读取观察日前 1/3/7 天的新增 cohort，WoW 将对应 cohort 和观察日同时前移七天，显示百分点差。零留存率可比较；零用户分母为 N/A。Purchaser Companion Retention 保持原 Chart overall 主值及独立 cohort WoW。2026-10-16 本地候选等待正式图表筛选更新和代码发布，不能把 preview 视为线上已切换。
 
 ## 5. Cloud Run HTTP 接口
 
