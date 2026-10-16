@@ -133,3 +133,22 @@ New User Retention 新口径候选：检查 `lthx47q8` CSV 元数据含起始事
 - The Amplitude starting-event filter was not saved. Its unsaved UI draft was discarded to prevent a chart-only partial rollout. Scheduler, IAM, Secrets and GCE were not changed; no report message was sent.
 - Resume with an administrator-approved identity that can update this Cloud Run service. Administrator can grant appropriately scoped Cloud Run Developer access; verify runtime-service-account `iam.serviceAccounts.actAs` if deployment subsequently requires it. Do not change IAM automatically or reuse the retired deployer identity.
 - After permissions are available: recheck the live production revision and image, deploy the exact built digest with `--no-traffic`, save only the approved starting-event filter, validate real CSV and the read-only candidate report, then switch traffic. On failure, keep/revert the old chart filter and original production traffic. Never trigger `/hermes/daily` merely to test deployment.
+
+### Release completed: 2026-10-16
+
+- Administrator granted the existing deployer the service-scoped custom role `hermesCloudRunUpdater`, containing `run.services.update`. A read-only permission test returned true. The existing runtime identity `actAs` permission was already present; this release did not change IAM.
+- Deployed the exact successful build digest above to `hermes-report-retention-userid-1016` at zero traffic. Both health endpoints passed. Compared environment variables (without exposing values), service account, mounts, resource limits, ports, command, timeout and concurrency against `user-summary-0914`; all were preserved.
+- Saved the approved filter on chart `lthx47q8`: starting event `_new`, user property `user_id`, operator `is not`, value `(none)`. Verified through the chart API that only `startEvent` changed; timezone, calendar alignment, range, return event and existing segments were unchanged. The report selects All Users only.
+- Candidate MCP returned the new metric version `new-user-retention.amplitude-chart-lthx47q8.user-id.daily-cohort-wow.v4`, complete/passed, with independent point dates and exact integer numerator/denominator values. Full real `/hermes/report` preview also passed without metric-fetch errors after the rate-limit cooldown. Actual business values and preview artifacts remain local, not in GitHub.
+- Full regression rerun: 91/91 passed; TypeScript passed.
+- Switched `hermes-report-retention-userid-1016` to 100% traffic. Original `hermes-report-user-summary-0914` remains available for rollback. The application source matches the pushed release branch and immutable built image; later commits update operational documentation only.
+- Scheduler remains ENABLED at `0 9 * * *`, `Asia/Shanghai`, with its original target. No Scheduler, Secret, GCE, group destination, or send endpoint was changed or triggered. No extra Feishu report was sent.
+- Validation caveat: the first full preview encountered Amplitude HTTP 429 after a successful individual retention query in the same short window. Existing bounded backoff did not outlast that shared limit. After more than five minutes without further analytics queries, one full preview passed. Avoid repeated/manual previews around the scheduled run; quota exhaustion is not an authentication failure and must not be hidden with old data. This release does not guarantee that unrelated consumers cannot exhaust the shared project quota.
+
+Rollback traffic, if required and authorized:
+
+```powershell
+& 'D:\loolapa实习\COCO\handover\gcloud-preflight-20260918.ps1' run services update-traffic hermes-report --project=furever-dock-hermes-agent --region=us-central1 --to-revisions=hermes-report-user-summary-0914=100
+```
+
+For an exact rollback of the prior business definition, also remove only the newly added starting-event User ID filter from `lthx47q8` and save; a traffic-only rollback leaves the new User ID restriction in place. Do not alter Purchaser retention or other chart parameters. The local evidence file retains both chart definitions, candidate validation and the real preview.
