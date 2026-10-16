@@ -125,3 +125,11 @@ New User Retention 新口径候选：检查 `lthx47q8` CSV 元数据含起始事
 - Release procedure: save the matching Amplitude starting-event filter, verify real CSV through the parser, build a versioned image, create a no-traffic candidate preserving all current configuration, verify health and read-only report, then switch traffic. Preserve `hermes-report-user-summary-0914` for rollback. Do not change Scheduler, IAM, Secrets, or the GCE market-video module for this release.
 - Real preview files and aggregate business data remain local and are excluded from this public repository.
 
+### Release checkpoint: blocked before Cloud Run candidate creation
+
+- GitHub branch `codex/retention-production-20261016` was pushed successfully and Draft PR #1 was opened against `handover/sync-current-production`.
+- Cloud Build `f4905971-4204-4e4e-86ac-5c6504fda7c4` in `us-central1` succeeded. Candidate image: `hermes-report:retention-userid-20261016`, digest `sha256:6d177d5a31699d5c24fecd31d230bb1307a9b0d5a4c7c227bde56402183fc9b9` in the existing Artifact Registry repository.
+- Creating the no-traffic Cloud Run revision was denied: `run.services.update` is missing for the existing `hermes-deployer-20260917` identity on `hermes-report`. No candidate revision or traffic cutover succeeded. The production-ready revision is still `hermes-report-user-summary-0914` at 100%.
+- The Amplitude starting-event filter was not saved. Its unsaved UI draft was discarded to prevent a chart-only partial rollout. Scheduler, IAM, Secrets and GCE were not changed; no report message was sent.
+- Resume with an administrator-approved identity that can update this Cloud Run service. Administrator can grant appropriately scoped Cloud Run Developer access; verify runtime-service-account `iam.serviceAccounts.actAs` if deployment subsequently requires it. Do not change IAM automatically or reuse the retired deployer identity.
+- After permissions are available: recheck the live production revision and image, deploy the exact built digest with `--no-traffic`, save only the approved starting-event filter, validate real CSV and the read-only candidate report, then switch traffic. On failure, keep/revert the old chart filter and original production traffic. Never trigger `/hermes/daily` merely to test deployment.
