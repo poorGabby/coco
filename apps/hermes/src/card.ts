@@ -28,10 +28,7 @@ function snapshotLine(s: ChartSnapshot): string {
       const rate = point.rate == null ? "—" : `${(point.rate * 100).toFixed(1)}%`;
       const pp = point.wowChangePp;
       const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
-      const dates = point.cohortDate
-        ? `\n  ${point.cohortDate} 有 User ID 新用户 → ${point.observationDate} 回访；上周 ${point.comparisonCohortDate} → ${point.comparisonObservationDate}`
-        : "";
-      return `• **${s.title} — Day ${day.slice(1)}**: ${rate}  (${wow})${dates}`;
+      return `• **${s.title} — Day ${day.slice(1)}**: ${rate}  (${wow})`;
     }).join("\n");
   }
   return `• **${s.title}**: ${formatNumber(s.yesterdayValue)}  (WoW ${formatPct(s.changePct)})`;

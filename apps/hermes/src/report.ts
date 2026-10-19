@@ -221,10 +221,7 @@ export function buildReportMarkdown(
         const current = point.rate == null ? "—" : `${(point.rate * 100).toFixed(1)}%`;
         const pp = point.wowChangePp;
         const wow = pp == null ? "WoW N/A" : `WoW ${pp > 0 ? "+" : ""}${pp.toFixed(1)}pp`;
-        const dates = point.cohortDate
-          ? ` · ${point.cohortDate} 有 User ID 新用户 → ${point.observationDate} 回访；上周 ${point.comparisonCohortDate} → ${point.comparisonObservationDate}`
-          : "";
-        lines.push(`• ${label} — Day ${day.slice(1)}: ${current} (${wow})${dates}`);
+        lines.push(`• ${label} — Day ${day.slice(1)}: ${current} (${wow})`);
       }
       continue;
     }

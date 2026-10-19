@@ -101,20 +101,30 @@ test("duplicate cohorts, invalid counts and changed retention methods fail close
   assert.throws(() => buildNewUserRetentionFromCsv(method, "2026-10-15", options), /expected N-Day/);
 });
 
-test("report, card and model contexts all retain per-point cohort dates and pp", () => {
+test("report and card metrics show only rates and WoW while internal contexts retain cohort dates", () => {
   const s = buildNewUserRetentionFromCsv(fixture(), "2026-10-15", options).chartSnapshot;
+  const originalSnapshot = JSON.stringify(s.snapshot);
   const markdown = buildReportMarkdown([s], undefined, "2026-10-15");
   const prompt = buildAnalysisPrompt([s]);
   const context = buildAmplitudeContext([s], markdown);
   const analysis = fallbackAnalysis([s], markdown);
-  const card = JSON.stringify(buildDailyCard(analysis, [s], "美区 2026/10/15"));
-  for (const text of [markdown, prompt, context, card]) {
+  const card = buildDailyCard(analysis, [s], "美区 2026/10/15") as { body: { elements: Array<{ tag: string; elements?: unknown[] }> } };
+  const metricsPanel = card.body.elements.find(element => element.tag === "collapsible_panel");
+  const cardMetrics = JSON.stringify(metricsPanel?.elements);
+  for (const text of [prompt, context]) {
     assert.match(text, /2026-10-14/); assert.match(text, /2026-10-12/); assert.match(text, /2026-10-08/);
     assert.match(text, /2026-10-01/); assert.match(text, /WoW/);
     assert.doesNotMatch(text, /DoD|主值为 Last 30 days overall/);
   }
   assert.match(markdown, /Day 1: 60\.0% \(WoW \+10\.0pp\)/);
   assert.match(markdown, /Day 7: 20\.0% \(WoW -10\.0pp\)/);
+  for (const text of [markdown, cardMetrics]) {
+    assert.doesNotMatch(text, /2026-10-14|2026-10-12|2026-10-08|2026-10-01/);
+    assert.doesNotMatch(text, /有 User ID 新用户|回访；上周|→/);
+    assert.match(text, /60\.0%.*WoW \+10\.0pp/);
+    assert.match(text, /20\.0%.*WoW -10\.0pp/);
+  }
+  assert.equal(JSON.stringify(s.snapshot), originalSnapshot, "formatting must not mutate source metadata");
   assert.match(prompt, /有 User ID/);
 });
 
