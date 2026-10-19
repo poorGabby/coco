@@ -152,3 +152,10 @@ Rollback traffic, if required and authorized:
 ```
 
 For an exact rollback of the prior business definition, also remove only the newly added starting-event User ID filter from `lthx47q8` and save; a traffic-only rollback leaves the new User ID restriction in place. Do not alter Purchaser retention or other chart parameters. The local evidence file retains both chart definitions, candidate validation and the real preview.
+
+### 2026-10-19 retention display simplification
+
+- User requested removal of the repeated cohort/return-date explanatory line. Both Card core metrics and Markdown report now show only each retention label, rate, and WoW. Snapshot cohort/observation dates, model context, identity filtering, calculation and source data remain unchanged.
+- Source commit `f1da119`; regression suite 91/91 and TypeScript passed. Rendering the prior real snapshot confirmed numerical values and unrelated card body content were identical after removing only the explanatory lines.
+- Cloud Build `dfc9a946-5683-49f7-8584-7afae7e65ee0` succeeded. Immutable digest `sha256:7b9d433b06aed17986e415e2cca5318f614cd15bc66a08cda44d8630ed1578c0`; revision `hermes-report-retention-display-1019`. Candidate configuration matched `hermes-report-retention-userid-1016`, both health checks passed, and one real full report returned HTTP200 with three retention rate/WoW lines and no cohort-date annotations or metric-fetch failures.
+- This is presentation-only. No Amplitude definition, Scheduler, GCE, secret, destination or historical Feishu message was changed. No additional message was sent. Rollback for this display change uses the prior revision `hermes-report-retention-userid-1016` and does not require changing the Amplitude filter.
