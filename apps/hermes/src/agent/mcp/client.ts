@@ -80,10 +80,11 @@ export function parseMcpServers(env: Env): McpServerConfig[] {
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms)),
-  ]);
+    new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms); }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 function makeTransport(cfg: McpServerConfig) {
@@ -108,15 +109,21 @@ interface CompactToolResult {
   structuredContent?: unknown;
 }
 
-function compactResult(res: unknown): CompactToolResult {
+export function compactResult(res: unknown): CompactToolResult {
   const r = (res ?? {}) as {
-    content?: Array<{ type?: string; text?: string }>;
+    content?: Array<{ type?: string; text?: string; resource?: { uri?: string; text?: string } }>;
     isError?: boolean;
     structuredContent?: unknown;
   };
   const text = (r.content ?? [])
-    .filter((c) => c.type === "text" && typeof c.text === "string")
-    .map((c) => c.text as string)
+    .flatMap((c) => {
+      if (c.type === "text" && typeof c.text === "string") return [c.text];
+      // GitHub get_file_contents delivers the actual file as an embedded text resource.
+      if (c.type === "resource" && typeof c.resource?.text === "string") {
+        return [`Source: ${c.resource.uri ?? "MCP resource"}\n${c.resource.text}`];
+      }
+      return [];
+    })
     .join("\n");
   const out: CompactToolResult = { text, isError: !!r.isError };
   if (r.structuredContent !== undefined) out.structuredContent = r.structuredContent;

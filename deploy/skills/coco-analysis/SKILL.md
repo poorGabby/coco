@@ -37,7 +37,7 @@ CoCo 日报分析规范
 不是数据缺失。描述时如实写「持平」，禁止说「数据缺失」「无法比较」。
 不要把相关性直接解释为因果关系，应使用"可能"、"需要进一步验证"等表达。
 深度分析必须引用具体指标名称、具体数值和变化幅度。
-日期统一使用美区（America/Denver）日期，格式为「美区 MM-DD」。
+日期统一使用美区（America/Dawson，固定 UTC-7）日期，格式为「美区 MM-DD」。
 各指标数据行括号内标注的日期（如「美区 07-12」）就是数据对应的美区日期，
 请直接使用这些日期，不要换算成北京时间。
 基期为 0 时变化率无法计算（除数为 0），应写 N/A，
@@ -49,7 +49,7 @@ CoCo 日报分析规范
 指标口径
 
 DAU、New Users、Purchase Users、Daily Revenue 统一采用 WoW：当前美区数据日 vs 7 天前同日。
-New User Retention（Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day / Daily）和 Purchaser Companion Retention 主值读取正式 Chart overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 使用百分点差。禁止 cohort rate 覆盖主值。
+New User Retention（Chart `lthx47q8`，起始事件 `user_id is not (none)`，`_new → companion_alive_daily`，N-day / Daily，All Users）主值为 daily-cohort-per-day；各 Day N 使用完结观察日前 N 天的 cohort。WoW 将各自 cohort 和观察日都前移七天，使用百分点差。Purchaser Companion Retention 仍为原 overall/combined 主值和独立 cohort WoW。
 展示与行文规则：
 普通指标对外一律写「WoW」和「较上周同日」；Retention 明确主值为 overall、WoW 为单日 cohort 周同比。
 必须复用输入 snapshot 的 comparison 日期/cohort、数值和 WoW，不得重新取数或改算。

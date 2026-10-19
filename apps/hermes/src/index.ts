@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { secretsEqual, verifyFeishuEventToken } from "./feishu-crypto.js";
 import { loadEnv } from "./env.js";
 import { askQuestion } from "./ask.js";
 import { runAgentQuestion } from "./agent/agent-runner.js";
@@ -14,9 +15,9 @@ import {
   sendCardToChat,
   reactToMessage,
   getTenantAccessToken,
-  listBotChats,
   type FeishuMessageEvent,
 } from "./feishu.js";
+import { resolveDailyReportChatId } from "./daily-target.js";
 import { handleCocoMcpRequest } from "./coco-mcp.js";
 import { ensureWikiCache, wikiCacheStats, searchFulltext } from "./wiki-cache.js";
 import { addMessage, getHistory, toGeminiContents, stats as convStats } from "./conversation.js";
@@ -28,6 +29,10 @@ import {
 const env = loadEnv();
 const app = new Hono();
 
+function isAdminAuthorized(authorization: string | undefined): boolean {
+  return secretsEqual(authorization, "Bearer " + env.cocoMcpKey);
+}
+
 /** CoCo Data MCP（交接文档 mcp_servers 模式）：Bearer 鉴权 + Streamable HTTP */
 app.all("/mcp", async (c) => {
   const key = env.cocoMcpKey;
@@ -35,7 +40,7 @@ app.all("/mcp", async (c) => {
     return c.json({ error: "COCO_MCP_KEY not configured" }, 503);
   }
   const auth = c.req.header("authorization") ?? "";
-  if (auth !== `Bearer ${key}`) {
+  if (!secretsEqual(auth, "Bearer " + key)) {
     return c.json({ error: "unauthorized" }, 401);
   }
   return handleCocoMcpRequest(env, c.req.raw);
@@ -47,8 +52,6 @@ app.get("/mcp/health", (c) => c.json({ ok: true, service: "coco-data-mcp" }));
 const MAX_EVENTS = 20;
 const recentEvents: Array<{
   ts: string;
-  raw: string;
-  parsed: Record<string, unknown>;
   matched: boolean;
   reason: string;
 }> = [];
@@ -59,19 +62,22 @@ function pushEvent(
   matched: boolean,
   reason: string,
 ) {
-  recentEvents.unshift({ ts: new Date().toISOString(), raw, parsed, matched, reason });
+  recentEvents.unshift({ ts: new Date().toISOString(), matched, reason });
   if (recentEvents.length > MAX_EVENTS) recentEvents.length = MAX_EVENTS;
 }
 
 app.get("/debug/events", (c) => {
+  if (!isAdminAuthorized(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   return c.json({ count: recentEvents.length, events: recentEvents });
 });
 
 app.get("/debug/conversations", (c) => {
+  if (!isAdminAuthorized(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   return c.json(convStats());
 });
 
 app.get("/debug/wiki", async (c) => {
+  if (!isAdminAuthorized(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   const stats = wikiCacheStats();
   const q = c.req.query("q") || "版本更新了几次？";
   const results = searchFulltext(q, 5);
@@ -122,6 +128,7 @@ app.get("/health", (c) => c.json({ ok: true }));
 
 /** 自由问答：Amplitude API 拉数 + Gemini 解读（无需飞书 / MCP） */
 app.post("/hermes/ask", async (c) => {
+  if (!isAdminAuthorized(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   const body = await c.req.json<{ question?: string }>().catch(() => ({ question: undefined }));
   const question = body.question?.trim();
   if (!question) {
@@ -142,6 +149,7 @@ app.post("/hermes/ask", async (c) => {
 
 /** 本地预览日报，无需飞书 */
 app.get("/hermes/report", async (c) => {
+  if (!isAdminAuthorized(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   const report = await generateReport(env);
   return c.text(report);
 });
@@ -150,12 +158,12 @@ app.get("/hermes/report", async (c) => {
 app.post("/feishu/events", async (c) => {
   // 先读原始文本再解析，方便在 Cloud Run 日志里排查飞书推送格式
   const raw = await c.req.text().catch(() => "");
-  console.log("Feishu callback raw body:", raw.slice(0, 500));
 
   const parsed: Record<string, unknown> & {
     challenge?: string;
     schema?: string;
-    header?: { event_type?: string };
+    token?: string;
+    header?: { event_type?: string; token?: string };
     event?: FeishuMessageEvent & { type?: string };
   } = {};
 
@@ -167,6 +175,12 @@ app.post("/feishu/events", async (c) => {
       pushEvent(raw, {}, false, "invalid-json");
       return c.json({ ok: false, error: "invalid json" }, 400);
     }
+  }
+
+  if (!verifyFeishuEventToken(parsed, env.feishuVerificationToken)) {
+    console.warn("[feishu] Rejected callback with invalid verification token");
+    pushEvent("", {}, false, "invalid-token");
+    return c.json({ ok: false, error: "unauthorized" }, 401);
   }
 
   // 飞书 URL 验证：收到 challenge 时原样返回
@@ -225,7 +239,7 @@ app.post("/feishu/events", async (c) => {
 
       const text = parseMessageText(event.message?.content);
       const chatLabel = isDM ? `DM:${chatId}` : `group:${chatId}`;
-      console.log(`[feishu] ${chatLabel} user query:`, text.slice(0, 100));
+      console.log(`[feishu] ${chatLabel} user query received (${text.length} chars)`);
 
       // 存入对话记忆
       if (text) {
@@ -311,39 +325,29 @@ app.post("/feishu/events", async (c) => {
   return c.json({ ok: true });
 });
 
-/** 定时日报：每天 9:00 由 Scheduler 触发，发给 Bot 所在的所有群 */
+/** 定时日报：每天 9:00 由 Scheduler 触发，只发给 FEISHU_REPORT_CHAT_ID */
 app.post("/hermes/daily", async (c) => {
   const secret = c.req.header("X-Cron-Secret");
-  if (!env.hermesCronSecret || secret !== env.hermesCronSecret) {
+  if (!secretsEqual(secret, env.hermesCronSecret)) {
     return c.text("Unauthorized", 401);
   }
 
-  // 自动发现 Bot 所在的所有群
-  let chatIds: string[];
+  let chatId: string;
   try {
-    chatIds = await listBotChats(env);
-    console.log(`[daily] Found ${chatIds.length} chats`);
+    chatId = resolveDailyReportChatId(env.feishuReportChatId);
   } catch (err) {
-    console.warn("[daily] Failed to list chats, falling back to env:", err);
-    chatIds = env.feishuReportChatId ? [env.feishuReportChatId] : [];
-  }
-
-  if (!chatIds.length) {
-    return c.text("No chat targets found", 500);
+    console.error("[daily] Invalid FEISHU_REPORT_CHAT_ID configuration");
+    return c.text(err instanceof Error ? err.message : "Invalid report chat target", 500);
   }
 
   const card = await generateDailyReport(env);
-  let sent = 0;
-  for (const chatId of chatIds) {
-    try {
-      await sendCardToChat(env, chatId, card);
-      sent++;
-    } catch (err) {
-      console.warn(`[daily] Failed to send to ${chatId}:`, err instanceof Error ? err.message : String(err));
-    }
+  try {
+    await sendCardToChat(env, chatId, card);
+    return c.json({ ok: true, sent: 1, total: 1 });
+  } catch (err) {
+    console.error("[daily] Failed to send to configured report chat:", err instanceof Error ? err.message : String(err));
+    return c.json({ ok: false, sent: 0, total: 1 }, 502);
   }
-
-  return c.json({ ok: true, sent, total: chatIds.length });
 });
 
 const port = env.port;

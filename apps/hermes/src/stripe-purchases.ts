@@ -1,6 +1,7 @@
 import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { Env } from "./env.js";
+import { reportMidnightUtcSec } from "./report-timezone.js";
 
 export type PurchaseProduct = "secondPet" | "pocket" | "stash" | "bigBag";
 export type StripePurchaseDay = {
@@ -12,7 +13,6 @@ export type StripePurchaseDay = {
   repeatedUserProductPurchases?: number;
 };
 
-const TZ = "America/Denver";
 const MAX_PAGES_PER_DAY = 100;
 const MAX_CONCURRENT_DAYS = 4;
 const emptyUsers = (): Record<PurchaseProduct, Set<string>> => ({
@@ -76,7 +76,7 @@ export async function fetchStripePurchaseRange(env: Env, startDate: string, endD
   const dates: string[] = [];
   for (let d = startDate; d <= endDate; d = addDays(d, 1)) dates.push(d);
 
-  // Stripe cursors are sequential within a query. Splitting by Denver day lets
+  // Stripe cursors are sequential within a query. Splitting by Dawson day lets
   // the eight-day report window make progress in parallel without changing the
   // paid-session or product classification rules.
   const days = new Map<string, StripePurchaseDay>();
@@ -88,10 +88,18 @@ export async function fetchStripePurchaseRange(env: Env, startDate: string, endD
   return days;
 }
 
+/** WoW only needs these two completed days; avoid scanning the six unused days. */
+export async function fetchStripePurchaseComparison(env: Env, date: string): Promise<Map<string, StripePurchaseDay>> {
+  const days = await Promise.all(
+    [addDays(date, -7), date].map((day) => fetchStripePurchaseRange(env, day, day)),
+  );
+  return new Map(days.flatMap((day) => [...day]));
+}
+
 async function fetchStripePurchaseDay(env: Env, date: string): Promise<StripePurchaseDay> {
   const day = emptyDay(date);
-  const gte = denverMidnightUtcSec(date);
-  const lt = denverMidnightUtcSec(addDays(date, 1));
+  const gte = reportMidnightUtcSec(date);
+  const lt = reportMidnightUtcSec(addDays(date, 1));
   let after: string | undefined;
 
   for (let page = 0; page < MAX_PAGES_PER_DAY; page++) {
@@ -130,13 +138,6 @@ async function fetchStripePurchaseDay(env: Env, date: string): Promise<StripePur
 }
 
 function addDays(date: string, delta: number): string { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); }
-function denverMidnightUtcSec(date: string): number {
-  const [y, m, d] = date.split("-").map(Number);
-  const probe = new Date(Date.UTC(y, m - 1, d, 12));
-  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour12: false, hour: "2-digit" }).format(probe));
-  return Date.UTC(y, m - 1, d, 12 - hour) / 1000;
-}
-
 export function stripePurchaseCounts(day: StripePurchaseDay | undefined) {
   const users = day?.users ?? emptyUsers();
   const treats = new Set([...users.pocket, ...users.stash, ...users.bigBag]);
@@ -144,14 +145,9 @@ export function stripePurchaseCounts(day: StripePurchaseDay | undefined) {
   return { total: new Set([...users.secondPet, ...treats]).size, secondPet: users.secondPet.size, treats: treats.size, pocket: users.pocket.size, stash: users.stash.size, bigBag: users.bigBag.size, secondPetQuantity: quantities.secondPet, pocketQuantity: quantities.pocket, stashQuantity: quantities.stash, bigBagQuantity: quantities.bigBag };
 }
 
-export function stripePurchaseRevenue(day: StripePurchaseDay | undefined): number {
-  const q = day?.quantities ?? emptyQuantities();
-  return Math.round((q.secondPet * 6.99 + q.pocket * 1.99 + q.stash * 4.99 + q.bigBag * 9.99) * 100) / 100;
-}
-
 export type StripePurchaseMetric = "second_pet" | "treats" | "pocket" | "stash" | "big_bag";
 export async function fetchStripePurchaseMetric(env: Env, metric: StripePurchaseMetric, date: string) {
-  const map = await fetchStripePurchaseRange(env, addDays(date, -7), date);
+  const map = await fetchStripePurchaseComparison(env, date);
   const current = stripePurchaseCounts(map.get(date));
   const previous = stripePurchaseCounts(map.get(addDays(date, -7)));
   const key = metric === "second_pet" ? "secondPet" : metric === "big_bag" ? "bigBag" : metric;

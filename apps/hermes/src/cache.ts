@@ -25,22 +25,24 @@ const LOCAL_PATH = process.env.RETENTION_CACHE_PATH ?? "./retention-cache.json";
 
 /** Detect if we're running on Cloud Run (has metadata server) */
 function isOnCloudRun(): boolean {
-  return !!process.env.K_SERVICE;
+  return !!(process.env.K_SERVICE || process.env.CLOUD_RUN_JOB);
 }
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 /** Get an access token for GCS — on Cloud Run uses metadata server, locally uses gcloud */
-async function getGcsToken(): Promise<string> {
+export async function getGcsToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) {
     return cachedToken.token;
   }
   if (isOnCloudRun()) {
     const res = await fetch(
       "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
-      { headers: { "Metadata-Flavor": "Google" } },
+      { headers: { "Metadata-Flavor": "Google" }, redirect: "error", signal: AbortSignal.timeout(5000) },
     );
+    if (!res.ok) throw new Error("Google runtime identity unavailable");
     const data = (await res.json()) as { access_token: string; expires_in: number };
+    if (!data.access_token || !Number.isFinite(data.expires_in)) throw new Error("Invalid Google runtime identity response");
     cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
     return cachedToken.token;
   }

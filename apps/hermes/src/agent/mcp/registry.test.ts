@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { compactResult } from "./client.js";
 import {
   mcpToolFullName,
   sanitizeSchema,
@@ -7,6 +8,22 @@ import {
   buildMcpToolRegistry,
   type McpToolDef,
 } from "./registry.js";
+
+test("MCP embedded text resources reach the model with their source and error status", () => {
+  const resource = { uri: "repo://team/product/sha/abc/contents/README.md", text: "# Product\nNode.js and TypeScript" };
+  const result = compactResult({ content: [
+    { type: "text", text: "successfully downloaded text file" },
+    { type: "resource", resource },
+    { type: "resource", resource: { uri: "repo://image", blob: "binary-data" } },
+  ] });
+  assert.ok(result.text.includes(resource.text));
+  assert.ok(result.text.includes(resource.uri));
+  assert.doesNotMatch(result.text, /binary-data/);
+  assert.equal(result.isError, false);
+  assert.deepEqual(compactResult({ content: [{ type: "text", text: "denied" }], isError: true, structuredContent: { code: 403 } }), {
+    text: "denied", isError: true, structuredContent: { code: 403 },
+  });
+});
 
 test("mcpToolFullName: 命名空间 + 非法字符净化 + 截断", () => {
   assert.equal(mcpToolFullName("notion", "search"), "mcp__notion__search");

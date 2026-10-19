@@ -95,7 +95,7 @@ bash scripts/deploy.sh update-only
 
 ### 留存 WoW 异常
 
-检查正式 New User Retention Chart `18lt8h9t` 的 `/query` 结果和 Purchaser Companion Retention Chart 的 `series.combined` 是否包含 D1/D3/D7 完整 `count/outof`，且 `incomplete=false`。主值必须来自 combined；WoW 暂时检查最新成熟单日 cohort 与 7 天前同日 cohort 两侧 D1/D3/D7 均完整，且不得覆盖主值。
+New User Retention 新口径候选：检查 `lthx47q8` CSV 元数据含起始事件 `user_id is not (none)`，All Users 对应的单日 cohort 行有 Users 和 Day N 完整数值。以已完结观察日 R 为锚，D1/D3/D7 分别读取 R−1/R−3/R−7 的 cohort，WoW 各自比较七天前的对应 cohort。缺失或未完结时不回退到更早日期。正式图表筛选和候选代码均需发布后才代表线上切换。Purchaser Companion Retention 继续核对 `/query` 的 `series.combined` 完整 `count/outof` 和既有独立 cohort WoW。
 
 ## 7. 变更纪律
 
@@ -115,3 +115,47 @@ bash scripts/deploy.sh update-only
 - 若 GCE 与 Cloud Run 同时接收同一飞书事件，存在重复回复风险，应明确唯一主入口。
 - 多个历史脚本包含个人路径。
 - Cloud Run 会话和知识库缓存仅在内存中。
+## 2026-10-16 New User Retention release baseline
+
+- Production source was recovered from successful Cloud Build `ac6a7929-a307-4cff-9ebd-d8d417c10126` in `us-central1`, matching the image of `hermes-report-user-summary-0914` (`sha256:b3cde2fbc0b8ed430aa763a86239890c06daad85f6c635894eef585d118e3a00`). The older handover clone must not be deployed directly.
+- The retention change is merged on that production baseline. Existing Stripe net revenue, database tools, user summaries, export pagination, callback authorization and single-chat delivery are preserved. Purchaser retention is unchanged.
+- New User Retention uses `_new` with `user_id is not (none)`, `companion_alive_daily`, strict calendar N-day retention in America/Dawson. For completed observation day R, D1/D3/D7 select R-1/R-3/R-7 independently. WoW moves both dates back seven days and reports percentage-point changes.
+- Full merged regression suite: 91 tests passed; TypeScript passed. This is not by itself proof of deployment or actual message delivery.
+- Deployment identity is the existing `hermes-deployer-20260917` service account, used through the isolated local configuration documented by the handover. Never publish authentication directories or keys. GitHub push is not automatic Cloud Run deployment.
+- Release procedure: save the matching Amplitude starting-event filter, verify real CSV through the parser, build a versioned image, create a no-traffic candidate preserving all current configuration, verify health and read-only report, then switch traffic. Preserve `hermes-report-user-summary-0914` for rollback. Do not change Scheduler, IAM, Secrets, or the GCE market-video module for this release.
+- Real preview files and aggregate business data remain local and are excluded from this public repository.
+
+### Release checkpoint: blocked before Cloud Run candidate creation
+
+- GitHub branch `codex/retention-production-20261016` was pushed successfully and Draft PR #1 was opened against `handover/sync-current-production`.
+- Cloud Build `f4905971-4204-4e4e-86ac-5c6504fda7c4` in `us-central1` succeeded. Candidate image: `hermes-report:retention-userid-20261016`, digest `sha256:6d177d5a31699d5c24fecd31d230bb1307a9b0d5a4c7c227bde56402183fc9b9` in the existing Artifact Registry repository.
+- Creating the no-traffic Cloud Run revision was denied: `run.services.update` is missing for the existing `hermes-deployer-20260917` identity on `hermes-report`. No candidate revision or traffic cutover succeeded. The production-ready revision is still `hermes-report-user-summary-0914` at 100%.
+- The Amplitude starting-event filter was not saved. Its unsaved UI draft was discarded to prevent a chart-only partial rollout. Scheduler, IAM, Secrets and GCE were not changed; no report message was sent.
+- Resume with an administrator-approved identity that can update this Cloud Run service. Administrator can grant appropriately scoped Cloud Run Developer access; verify runtime-service-account `iam.serviceAccounts.actAs` if deployment subsequently requires it. Do not change IAM automatically or reuse the retired deployer identity.
+- After permissions are available: recheck the live production revision and image, deploy the exact built digest with `--no-traffic`, save only the approved starting-event filter, validate real CSV and the read-only candidate report, then switch traffic. On failure, keep/revert the old chart filter and original production traffic. Never trigger `/hermes/daily` merely to test deployment.
+
+### Release completed: 2026-10-16
+
+- Administrator granted the existing deployer the service-scoped custom role `hermesCloudRunUpdater`, containing `run.services.update`. A read-only permission test returned true. The existing runtime identity `actAs` permission was already present; this release did not change IAM.
+- Deployed the exact successful build digest above to `hermes-report-retention-userid-1016` at zero traffic. Both health endpoints passed. Compared environment variables (without exposing values), service account, mounts, resource limits, ports, command, timeout and concurrency against `user-summary-0914`; all were preserved.
+- Saved the approved filter on chart `lthx47q8`: starting event `_new`, user property `user_id`, operator `is not`, value `(none)`. Verified through the chart API that only `startEvent` changed; timezone, calendar alignment, range, return event and existing segments were unchanged. The report selects All Users only.
+- Candidate MCP returned the new metric version `new-user-retention.amplitude-chart-lthx47q8.user-id.daily-cohort-wow.v4`, complete/passed, with independent point dates and exact integer numerator/denominator values. Full real `/hermes/report` preview also passed without metric-fetch errors after the rate-limit cooldown. Actual business values and preview artifacts remain local, not in GitHub.
+- Full regression rerun: 91/91 passed; TypeScript passed.
+- Switched `hermes-report-retention-userid-1016` to 100% traffic. Original `hermes-report-user-summary-0914` remains available for rollback. The application source matches the pushed release branch and immutable built image; later commits update operational documentation only.
+- Scheduler remains ENABLED at `0 9 * * *`, `Asia/Shanghai`, with its original target. No Scheduler, Secret, GCE, group destination, or send endpoint was changed or triggered. No extra Feishu report was sent.
+- Validation caveat: the first full preview encountered Amplitude HTTP 429 after a successful individual retention query in the same short window. Existing bounded backoff did not outlast that shared limit. After more than five minutes without further analytics queries, one full preview passed. Avoid repeated/manual previews around the scheduled run; quota exhaustion is not an authentication failure and must not be hidden with old data. This release does not guarantee that unrelated consumers cannot exhaust the shared project quota.
+
+Rollback traffic, if required and authorized:
+
+```powershell
+& 'D:\loolapa实习\COCO\handover\gcloud-preflight-20260918.ps1' run services update-traffic hermes-report --project=furever-dock-hermes-agent --region=us-central1 --to-revisions=hermes-report-user-summary-0914=100
+```
+
+For an exact rollback of the prior business definition, also remove only the newly added starting-event User ID filter from `lthx47q8` and save; a traffic-only rollback leaves the new User ID restriction in place. Do not alter Purchaser retention or other chart parameters. The local evidence file retains both chart definitions, candidate validation and the real preview.
+
+### 2026-10-19 retention display simplification
+
+- User requested removal of the repeated cohort/return-date explanatory line. Both Card core metrics and Markdown report now show only each retention label, rate, and WoW. Snapshot cohort/observation dates, model context, identity filtering, calculation and source data remain unchanged.
+- Source commit `f1da119`; regression suite 91/91 and TypeScript passed. Rendering the prior real snapshot confirmed numerical values and unrelated card body content were identical after removing only the explanatory lines.
+- Cloud Build `dfc9a946-5683-49f7-8584-7afae7e65ee0` succeeded. Immutable digest `sha256:7b9d433b06aed17986e415e2cca5318f614cd15bc66a08cda44d8630ed1578c0`; revision `hermes-report-retention-display-1019`. Candidate configuration matched `hermes-report-retention-userid-1016`, both health checks passed, and one real full report returned HTTP200 with three retention rate/WoW lines and no cohort-date annotations or metric-fetch failures.
+- This is presentation-only. No Amplitude definition, Scheduler, GCE, secret, destination or historical Feishu message was changed. No additional message was sent. Rollback for this display change uses the prior revision `hermes-report-retention-userid-1016` and does not require changing the Amplitude filter.

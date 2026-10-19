@@ -17,14 +17,14 @@ CoCo 数据口径 Skill（问答与日报共用的口径事实源）
 （安全底线由代码工具保证：所有核心指标真算 WoW、Retention 使用百分点差、基期为 0 返回 N/A、日期校验、数值只来自工具返回——本文档无法改写这些底线。）
 
 一、时间与时区
-所有数据时区为 America/Denver（美区）。提及日期一律写「美区 MM-DD」，不要换算成北京时间。
+所有数据时区为 America/Dawson（美区，固定 UTC-7）。提及日期一律写「美区 MM-DD」，不要换算成北京时间。
 「最近完结日」= 美区的昨天（今天尚未走完，不作为完结日）。默认查询指最近一个完结日。
 用户只给月/日（如 7/6、7月6日）时，按当前年份补全；除非用户明确写出其他年份，禁止使用往年日期。
 多轮对话中用户追问「每天/明细/来源」等，沿用上一轮的指标与日期区间，不要擅自改回默认区间。
 
 二、指标比较口径
 DAU、New Users、Purchase Users、Daily Revenue 统一使用 WoW = 最近完结日 vs 7 天前同日；对外写「WoW」并解释为「较上周同日」。
-New User Retention（Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day / Daily）和 Purchaser Companion Retention 主值读取正式 Chart overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，D1/D3/D7 使用百分点差。禁止 cohort rate 覆盖主值。
+New User Retention（Chart `lthx47q8`，起始事件 `user_id is not (none)`，`_new → companion_alive_daily`，N-day / Daily，All Users）主值为 daily-cohort-per-day；各 Day N 使用完结观察日前 N 天的 cohort。WoW 将各自 cohort 和观察日都前移七天，使用百分点差。Purchaser Companion Retention 仍为原 overall/combined 主值和独立 cohort WoW。
 必须使用工具 snapshot 返回的 comparison 日期/cohort、数值和 WoW，不得自行重算或混用。
 当比较基期为 0 或缺失时，变化率一律写 N/A；禁止编造百分比，禁止写「从 0 恢复」「从 0 增长至」。
 变化率 0.0% 表示「持平」，不等于数据缺失。
@@ -33,12 +33,12 @@ New User Retention（Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day
 新增用户 / 新增 / 拉新 / new users → fetch_amplitude_metric(metricName=New_Users)（正式 New Users (Daily) Chart 的 Daily Uniques）
 活跃用户 / 日活 / DAU → fetch_amplitude_metric(DAU)；周活 / WAU → fetch_amplitude_metric(WAU)
 多少人购买 / 购买用户数 / 付费用户数 / 购买成功数 → fetch_purchase_users
-数据源：Amplitude 保存图表 bh0r0h4o（Purchase Completed — Unique Users，事件 purchase_completed 无分组去重），与网页 UI、日报同属图表引擎口径，数值与 UI 一致。
+数据源：Amplitude 保存图表 7n9n6eez（Purchase Completed — Unique Users，事件 purchase_completed 无分组去重），与网页 UI、日报同属图表引擎口径，数值与 UI 一致。
 该图表只覆盖最近约 30 天；更早的历史购买人数本图表无法提供。
 这是「人数」，不是订单数，也不能用来乘单价估收入。
 严禁用 fetch_amplitude_metric 查购买人数（Segmentation API 口径偏低、与 UI 不符）。
 收入 / 营收 / revenue / 赚了多少钱 / GMV → fetch_daily_revenue
-数据源：正式 Amplitude Revenue Chart qycqvc95。
+数据源：正式 Amplitude Revenue Chart xqmzi8cs。
 收入 = purchase_completed Event Totals × $9.99。
 严禁用「购买人数 × 单价」自行估算收入（口径不同会算错）。
 
@@ -48,7 +48,7 @@ New User Retention（Chart `18lt8h9t`，`_new → companion_alive_daily`，N-day
 若工具返回 notes 提示或数值全为 0，多半是日期/年份填错，应改用正确日期重试，绝不能直接把 0 当结论。
 
 五、回答呈现要求
-指标类问题：除总数外给出每日（或分档）明细，并说明数据来源（取工具返回的 source：指标名、日期区间、时区 America/Denver、图表/接口）。
+指标类问题：除总数外给出每日（或分档）明细，并说明数据来源（取工具返回的 source：指标名、日期区间、时区 America/Dawson、图表/接口）。
 恰当时主动给出 WoW：普通指标写百分比，Retention 写百分点差；基期为 0 写 N/A。
 「一共多少人」优先用整段去重（uniqueOverPeriod）；跨多日的「每日之和」会把同一人重复计数，需说明。
 回答要具体、有分析感，用简洁专业的中文，不要只丢一个孤零零的数字。

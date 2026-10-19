@@ -11,6 +11,8 @@
  *   改事件名只改这里，业务层无感
  */
 
+import { REPORT_TIME_ZONE } from "./report-timezone.js";
+
 // ── 类型 ──
 
 export interface AmplitudeQueryInput {
@@ -91,14 +93,14 @@ export class AmplitudeSkill {
     }
 
     // API 要求 start/end 为 YYYYMMDD 格式（不带横线）
-    // i=1 显式声明日粒度；timezone=America/Denver 保证与 Dashboard 图表截数边界一致
+    // i=1 显式声明日粒度；timezone=America/Dawson 保证固定 UTC-7 日边界
     const params = new URLSearchParams({
       e: JSON.stringify(eventObj),
       start: input.startDate.replace(/-/g, ""),
       end: input.endDate.replace(/-/g, ""),
       m: config.measure,
       i: "1",
-      timezone: "America/Denver",
+      timezone: REPORT_TIME_ZONE,
     });
 
     // URL 时间戳参数绕开 CDN 缓存

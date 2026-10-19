@@ -1,14 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { PurchaseProductTable } from "../amplitude.js";
 import type { PurchaseUsersTable } from "../amplitude.js";
 import {
   createFetchAmplitudeMetric,
-  createFetchDailyRevenue,
   createFetchStripeRevenue,
   createFetchPurchaseUsers,
-  computeRevenue,
-  revenueForDate,
   addDays,
   daysBetween,
   type AmplitudeExecutor,
@@ -145,71 +141,7 @@ test("日期算术 helper", () => {
   assert.equal(daysBetween("2026-07-06", "2026-07-12"), 6);
 });
 
-// ── fetch_daily_revenue ──────────────────────────────────────────────
-
-const PRICES = { "9.99": 9.99, "6.99": 6.99 };
-const fakeTable: PurchaseProductTable = {
-  dates: ["2026-07-06", "2026-07-11", "2026-07-12", "2026-07-13"],
-  products: {
-    "9.99": { "2026-07-06": 2, "2026-07-11": 2, "2026-07-12": 4, "2026-07-13": 14 },
-    "6.99": { "2026-07-06": 0, "2026-07-11": 0, "2026-07-12": 0, "2026-07-13": 4 },
-  },
-};
-
-test("computeRevenue: 逐日按单价×人数", () => {
-  const days = computeRevenue(fakeTable, PRICES, "2026-07-13", "2026-07-13");
-  assert.equal(days.length, 1);
-  assert.equal(days[0].revenue, 167.82); // 14*9.99 + 4*6.99
-  assert.equal(days[0].byProduct["9.99"].revenue, 139.86);
-  assert.equal(days[0].byProduct["6.99"].users, 4);
-});
-
-test("revenueForDate: 缺失日返回 null", () => {
-  assert.equal(revenueForDate(fakeTable, PRICES, "2026-07-13"), 167.82);
-  assert.equal(revenueForDate(fakeTable, PRICES, "2026-07-01"), null);
-});
-
-test("fetchDailyRevenue: 默认单日 + 收入 WoW", async () => {
-  const run = createFetchDailyRevenue({
-    fetchTable: async () => fakeTable,
-    prices: PRICES,
-    today: () => "2026-07-13",
-    now: () => FIXED_NOW,
-  });
-  const res = await run({});
-  assert.equal(res.startDate, "2026-07-13");
-  assert.equal(res.endDate, "2026-07-13");
-  assert.equal(res.totalRevenue, 167.82);
-  // 07-06 收入 = 2*9.99 = 19.98 → WoW = (167.82-19.98)/19.98 = 739.9%
-  assert.equal(res.wowPct, 739.9);
-  assert.equal(res.snapshot.metricVersion, "daily_revenue.amplitude-product-price.v1");
-  assert.equal(res.snapshot.completeness, "complete");
-});
-
-test("fetchDailyRevenue: 区间求和", async () => {
-  const run = createFetchDailyRevenue({
-    fetchTable: async () => fakeTable,
-    prices: PRICES,
-    today: () => "2026-07-13",
-  });
-  const res = await run({ startDate: "2026-07-11", endDate: "2026-07-13" });
-  // 07-11: 2*9.99=19.98; 07-12: 39.96; 07-13: 167.82
-  assert.equal(res.totalRevenue, 227.76);
-  assert.equal(res.perDay.length, 3);
-});
-
-test("fetchDailyRevenue: endDate 晚于完结日时 clamp", async () => {
-  const run = createFetchDailyRevenue({
-    fetchTable: async () => fakeTable,
-    prices: PRICES,
-    today: () => "2026-07-13",
-  });
-  const res = await run({ endDate: "2026-07-14" });
-  assert.equal(res.endDate, "2026-07-13");
-  assert.ok(res.notes?.some((n) => n.includes("自动改为")));
-});
-
-// ── fetch_daily_revenue（Stripe 版）──────────────────────────────────
+// ── fetch_daily_revenue（Stripe）────────────────────────────────────
 
 function fakeStripeRange(): (s: string, e: string) => Promise<Map<string, StripeRevenueDay>> {
   const all: Record<string, StripeRevenueDay> = {
@@ -239,8 +171,15 @@ test("fetchStripeRevenue: 默认单日 + 收入 WoW", async () => {
   // 07-06=19.98 → WoW = (167.82-19.98)/19.98 = 739.9%
   assert.equal(res.wowPct, 739.9);
   assert.match(res.source, /Stripe/);
-  assert.equal(res.perDay[0].byProduct["9.99"].users, 14);
-  assert.equal(res.snapshot.metricVersion, "daily_revenue.stripe.v1");
+  assert.deepEqual(res.perDay[0].byProduct, {}, "Stripe charge count must not be mislabeled as unique users");
+  assert.equal(res.perDay[0].chargeCount, 15);
+  assert.equal(res.perDay[0].grossRevenue, 167.82);
+  assert.equal(res.snapshot.metricVersion, "daily-revenue.stripe-charge-date-net.v2");
+  assert.equal(res.snapshot.currentValue, 167.82);
+  assert.equal(res.snapshot.comparisonValue, 19.98);
+  assert.equal(res.snapshot.completeness, "complete");
+  assert.equal(res.chartSnapshot?.yesterdayValue, 167.82);
+  assert.equal(res.chartSnapshot?.dayBeforeValue, 19.98);
 });
 
 test("fetchStripeRevenue: 区间求和", async () => {
@@ -257,7 +196,17 @@ test("fetchStripeRevenue: endDate 晚于完结日时 clamp", async () => {
   assert.ok(res.notes?.some((n) => n.includes("自动改为")));
 });
 
-// ── fetch_purchase_users（chart bh0r0h4o 同源）────────────────────────
+test("fetchStripeRevenue: 成功读取的零收入日仍是完整数据", async () => {
+  const run = createFetchStripeRevenue({ fetchRange: fakeStripeRange(), today: () => "2026-07-21" });
+  const res = await run({});
+  assert.equal(res.totalRevenue, 0);
+  assert.equal(res.snapshot.currentValue, 0);
+  assert.equal(res.snapshot.completeness, "complete");
+  assert.equal(res.wowPct, null);
+  assert.ok(res.notes?.some((note) => note.includes("无成交入账")));
+});
+
+// ── fetch_purchase_users（chart 7n9n6eez 同源）────────────────────────
 
 const fakeUsersTable: PurchaseUsersTable = {
   dates: ["2026-07-05", "2026-07-06", "2026-07-11", "2026-07-12", "2026-07-13"],
@@ -276,7 +225,7 @@ test("fetchPurchaseUsers: 默认单日 + WoW", async () => {
   assert.equal(res.perDay[0].users, 15);
   assert.equal(res.sumOfDaily, 15);
   assert.equal(res.wowPct, 200); // (15-5)/5
-  assert.equal(res.snapshot.metricVersion, "purchase_users.amplitude-chart-bh0r0h4o.v1");
+  assert.equal(res.snapshot.metricVersion, "purchase_users.amplitude-chart-7n9n6eez.v2");
   assert.equal(res.snapshot.completeness, "complete");
 });
 
@@ -306,7 +255,7 @@ test("fetchPurchaseUsers: 窗口外日期给出缺列提示", async () => {
     today: () => "2026-07-13",
   });
   const res = await run({ startDate: "2026-07-09", endDate: "2026-07-13" });
-  assert.ok(res.notes?.some((n) => n.includes("bh0r0h4o") && n.includes("2026-07-09")));
+  assert.ok(res.notes?.some((n) => n.includes("7n9n6eez") && n.includes("2026-07-09")));
   assert.equal(res.snapshot.completeness, "partial");
   assert.equal(res.snapshot.validation.status, "warning");
 });

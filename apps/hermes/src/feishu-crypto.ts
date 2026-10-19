@@ -1,4 +1,19 @@
-import { createDecipheriv, createHash } from "node:crypto";
+import { createDecipheriv, createHash, timingSafeEqual } from "node:crypto";
+
+export function secretsEqual(actual: string | undefined, expected: string): boolean {
+  if (!actual || !expected) return false;
+  const a = Buffer.from(actual);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function verifyFeishuEventToken(
+  payload: { token?: unknown; header?: { token?: unknown } },
+  expected: string,
+): boolean {
+  const token = payload.header?.token ?? payload.token;
+  return typeof token === "string" && secretsEqual(token, expected);
+}
 
 /** 飞书 Encrypt Key 解密（AES-256-CBC，密文格式 base64(iv + ciphertext)） */
 export function decryptFeishuPayload(encryptKey: string, encrypted: string): string {

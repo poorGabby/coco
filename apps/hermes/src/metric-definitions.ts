@@ -10,7 +10,7 @@ export type BusinessMetricDefinition = {
   chartId: string | null;
   title: string;
   metricVersion: string;
-  valueScope?: "overall-combined";
+  valueScope?: "overall-combined" | "daily-cohort-per-day";
   wowScope?: "single-cohort-week-over-week";
   status: "confirmed" | "unresolved";
   /** UI source-of-truth captured from the approved Amplitude Dashboard screenshots. */
@@ -19,66 +19,66 @@ export type BusinessMetricDefinition = {
 };
 
 /**
- * Amplitude Dashboard Chart 是正式业务指标的数据源与验收基准。
- * 核心指标只能通过固定 Chart ID 的标准函数读取，并在访问或解析失败时 fail closed。
+ * 每个核心指标都必须使用这里声明的数据源与业务定义，并在访问或解析失败时 fail closed。
+ * 行为指标使用固定 Amplitude Chart；Daily Revenue 使用 Stripe 支付事实。
  */
 export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMetricDefinition> = {
   DAU: {
     chartId: "ilhu9t17",
     title: "Daily Active Users (DAU) — Calendar Day",
-    metricVersion: "dau.amplitude-chart-ilhu9t17.calendar-day.wow.v4",
+    metricVersion: "dau.amplitude-chart-ilhu9t17.calendar-day.wow.v5",
     status: "confirmed",
     chartDefinition: {
       event: "_active",
       eventLabel: "[Amplitude] Any Active Event",
       measure: "uniques",
       rollingAverageDays: null,
-      segment: "None",
+      segment: "All Users",
       interval: "daily",
-      timezone: "America/Denver",
+      timezone: "America/Dawson",
       dateBoundary: "exclude incomplete current day",
       filters: [],
       groupBy: [],
     },
   },
   New_Users: {
-    chartId: "1n0bfs5k",
+    chartId: "odptyaey",
     title: "New Users (Daily)",
-    metricVersion: "new-users.amplitude-chart-1n0bfs5k.daily-uniques.wow.v3",
+    metricVersion: "new-users.amplitude-chart-odptyaey.daily-uniques.wow.v4",
     status: "confirmed",
     chartDefinition: {
       event: "_new",
       eventLabel: "[Amplitude] New User",
       measure: "uniques",
-      segment: "None",
+      segment: "All Users",
       interval: "daily",
-      timezone: "America/Denver",
+      timezone: "America/Dawson",
       dateRange: "Last 30 days",
-      currentDateBoundary: "latest completed Denver calendar day",
+      currentDateBoundary: "latest completed Dawson calendar day",
       filters: [],
       groupBy: [],
     },
   },
   Purchase_Users: {
-    chartId: "bh0r0h4o",
+    chartId: "7n9n6eez",
     title: "Purchase Completed — Unique Users",
-    metricVersion: "purchase-users.amplitude-chart-bh0r0h4o.wow.v2",
+    metricVersion: "purchase-users.amplitude-chart-7n9n6eez.wow.v3",
     status: "confirmed",
     chartDefinition: {
       event: "purchase_completed",
       measure: "uniques",
       segment: "All Users",
       interval: "daily",
-      timezone: "America/Denver",
+      timezone: "America/Dawson",
       filters: [],
       groupBy: [],
     },
   },
   New_User_Retention: {
-    chartId: "18lt8h9t",
+    chartId: "lthx47q8",
     title: "New User Retention",
-    metricVersion: "new-user-retention.amplitude-chart-18lt8h9t.overall-value.cohort-wow.v1",
-    valueScope: "overall-combined",
+    metricVersion: "new-user-retention.amplitude-chart-lthx47q8.user-id.daily-cohort-wow.v4",
+    valueScope: "daily-cohort-per-day",
     wowScope: "single-cohort-week-over-week",
     status: "confirmed",
     chartDefinition: {
@@ -88,14 +88,17 @@ export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMet
       interval: "daily",
       days: [1, 3, 7],
       segment: "All Users",
-      timezone: "America/Denver",
-      filters: [],
+      timezone: "America/Dawson",
+      filters: [{ property: "user_id", operator: "is not", values: ["(none)"], appliesTo: "startEvent" }],
+      observationDate: "latest completed Dawson calendar day, or explicit completed endDate",
+      cohortSelection: "D1=observationDate-1; D3=observationDate-3; D7=observationDate-7",
+      comparison: "same day-N cohort and observation date seven days earlier; percentage-point difference",
     },
   },
   Purchaser_Companion_Retention: {
-    chartId: "5of8047n",
+    chartId: "v5i4q52e",
     title: "Purchaser Companion Retention",
-    metricVersion: "purchaser-companion-retention.amplitude-chart-5of8047n.overall-value.cohort-wow.v4",
+    metricVersion: "purchaser-companion-retention.amplitude-chart-v5i4q52e.overall-value.cohort-wow.v5",
     valueScope: "overall-combined",
     wowScope: "single-cohort-week-over-week",
     status: "confirmed",
@@ -106,25 +109,23 @@ export const BUSINESS_METRIC_DEFINITIONS: Record<CoreBusinessMetric, BusinessMet
       windowCalculation: "24-hour windows",
       days: [1, 3, 7],
       segment: { event: "purchase_completed", operator: ">=", count: 1, window: "Last 365 days" },
-      timezone: "America/Denver",
+      timezone: "America/Dawson",
       filters: [],
     },
   },
   Daily_Revenue: {
-    chartId: "qycqvc95",
+    chartId: null,
     title: "Daily Revenue",
-    metricVersion: "daily-revenue.amplitude-chart-qycqvc95.wow.v2",
+    metricVersion: "daily-revenue.stripe-charge-date-net.v2",
     status: "confirmed",
     chartDefinition: {
-      event: "purchase_completed",
-      measure: "totals",
-      formula: "event totals × 9.99 USD",
-      unitPriceUsd: 9.99,
-      segment: "All Users",
-      interval: "daily",
-      timezone: "America/Denver",
-      filters: [],
-      groupBy: [],
+      source: "Stripe Charges API",
+      object: "charge",
+      filters: { status: "succeeded", paid: true, currency: "usd", livemode: true },
+      formula: "sum(amount - amount_refunded)",
+      dateAttribution: "charge created date",
+      timezone: "America/Dawson",
+      comparison: "same completed calendar day seven days earlier",
     },
   },
 };

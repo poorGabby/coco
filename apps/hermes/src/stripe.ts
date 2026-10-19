@@ -1,6 +1,7 @@
 import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { Env } from "./env.js";
+import { reportDateOfEpochSec, reportMidnightUtcSec } from "./report-timezone.js";
 
 /**
  * Stripe 数据源（真实支付流水）。
@@ -8,15 +9,15 @@ import type { Env } from "./env.js";
  * 设计意图：作为可复用的「数据源 Skill」——日报的 Daily Revenue 与自由问答的
  * 收入工具都从这里取数，保证卡片与聊天的收入口径永远一致，不再各算各的。
  *
- * 口径：以 America/Denver 自然日归集 `succeeded && paid` 的 charge，
- * revenue = Σ(amount − amount_refunded)。时区与 Amplitude 日报保持一致。
+ * 口径：以 America/Dawson（固定 UTC-7）自然日归集 `succeeded && paid` 的 charge，
+ * revenue = Σ(amount − amount_refunded)。退款归属于原始 Charge 创建日；
+ * 历史日期可能随该 Charge 后续退款而变化。时区与日报保持一致。
  */
 
-const STRIPE_TZ = "America/Denver";
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export interface StripeDailyRevenue {
-  /** Denver 自然日 YYYY-MM-DD */
+  /** Dawson 自然日 YYYY-MM-DD */
   date: string;
   /** 当日实际入账收入（美元，已扣退款） */
   revenue: number;
@@ -28,33 +29,7 @@ export interface StripeDailyRevenue {
   refunded: number;
 }
 
-/** 某个 Denver 自然日 00:00 对应的 UTC 秒级时间戳（自动处理 MST/MDT 夏令时）。 */
-function denverMidnightUtcSec(dateStr: string): number {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  // 用当天 UTC 12:00 探测 Denver 小时：MDT(UTC-6)→06，MST(UTC-7)→05
-  const probe = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  const denverHour = Number(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: STRIPE_TZ,
-      hour12: false,
-      hour: "2-digit",
-    }).format(probe),
-  );
-  const offsetHours = 12 - denverHour; // 6 或 7
-  return Date.UTC(y, m - 1, d, offsetHours, 0, 0) / 1000;
-}
-
-/** 把 UTC 秒级时间戳归集到其所属的 Denver 自然日 YYYY-MM-DD。 */
-function denverDateOf(epochSec: number): string {
-  // en-CA 输出 YYYY-MM-DD
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: STRIPE_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(epochSec * 1000));
-}
-
+/** 某个 Dawson 自然日 00:00 对应的 UTC 秒级时间戳（固定 UTC-7）。 */
 function addDays(dateStr: string, delta: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -72,7 +47,7 @@ function resolveProxyUrl(): string | undefined {
   );
 }
 
-interface StripeCharge {
+export interface StripeCharge {
   id: string;
   amount: number;
   amount_refunded?: number;
@@ -80,9 +55,37 @@ interface StripeCharge {
   status: string;
   paid: boolean;
   currency: string;
+  livemode: boolean;
 }
 
-function stripeGet(
+/** 将单笔 Stripe Charge 安全归入已预置的 Dawson 日桶。 */
+export function applyStripeCharge(
+  days: Map<string, StripeDailyRevenue>,
+  charge: StripeCharge,
+): void {
+  if (charge.status !== "succeeded" || !charge.paid) return;
+  if (!charge.livemode) {
+    throw new Error("Stripe test-mode charge cannot be included in production Daily Revenue");
+  }
+  if (charge.currency.toLowerCase() !== "usd") {
+    throw new Error(`Stripe Daily Revenue is USD-only; received ${charge.currency}`);
+  }
+  const refunded = charge.amount_refunded ?? 0;
+  if (!Number.isInteger(charge.amount) || !Number.isInteger(refunded) || charge.amount < 0 || refunded < 0 || refunded > charge.amount) {
+    throw new Error("Stripe charge contains an invalid amount or refund amount");
+  }
+  const day = reportDateOfEpochSec(charge.created);
+  const entry = days.get(day);
+  if (!entry) return;
+  const net = charge.amount - refunded;
+  entry.revenue = round2(entry.revenue + net / 100);
+  entry.refunded = round2(entry.refunded + refunded / 100);
+  entry.count += 1;
+  const priceLabel = (charge.amount / 100).toFixed(2);
+  entry.byPrice[priceLabel] = (entry.byPrice[priceLabel] ?? 0) + 1;
+}
+
+export function stripeGet(
   apiKey: string,
   path: string,
 ): Promise<{ status: number; json: Record<string, unknown> }> {
@@ -99,7 +102,9 @@ function stripeGet(
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (c) => chunks.push(c as Buffer));
+        let size = 0;
+        res.on("data", (c) => { size += c.length; if (size > 16 * 1024 * 1024) { req.destroy(new Error("Stripe response exceeds 16 MiB")); return; } chunks.push(c as Buffer); });
+        res.on("error", reject);
         res.on("end", () => {
           try {
             resolve({
@@ -113,13 +118,16 @@ function stripeGet(
       },
     );
     req.on("timeout", () => req.destroy(new Error("Stripe request timeout (30s)")));
+    // Socket timeouts do not cover a stalled proxy/DNS connection; bound wall time too.
+    const deadline = setTimeout(() => req.destroy(new Error("Stripe request deadline (30s)")), 30_000);
+    req.on("close", () => clearTimeout(deadline));
     req.on("error", reject);
     req.end();
   });
 }
 
 /**
- * 拉取 [startDate, endDate]（含端点，均为 Denver 自然日）逐日的真实收入。
+ * 拉取 [startDate, endDate]（含端点，均为 Dawson 自然日）逐日的真实收入。
  * 返回 Map<YYYY-MM-DD, StripeDailyRevenue>，区间内每一天都有条目（无数据则为 0）。
  */
 export async function fetchStripeRevenueRange(
@@ -130,8 +138,8 @@ export async function fetchStripeRevenueRange(
   if (!env.stripeApiKey) {
     throw new Error("STRIPE_API_KEY 未配置");
   }
-  const gte = denverMidnightUtcSec(startDate);
-  const lt = denverMidnightUtcSec(addDays(endDate, 1));
+  const gte = reportMidnightUtcSec(startDate);
+  const lt = reportMidnightUtcSec(addDays(endDate, 1));
 
   // 预置区间内每一天，保证缺数据的日子也返回 0 而不是缺失
   const days = new Map<string, StripeDailyRevenue>();
@@ -140,6 +148,7 @@ export async function fetchStripeRevenueRange(
   }
 
   let after: string | undefined;
+  let paginationComplete = false;
   for (let page = 0; page < 100; page++) {
     const qs =
       `created[gte]=${gte}&created[lt]=${lt}&limit=100` +
@@ -151,27 +160,21 @@ export async function fetchStripeRevenueRange(
     }
     const data = (json.data as StripeCharge[]) ?? [];
     for (const c of data) {
-      if (c.status !== "succeeded" || !c.paid) continue;
-      const day = denverDateOf(c.created);
-      const entry = days.get(day);
-      if (!entry) continue; // 落在区间外（分页边界）忽略
-      const refunded = c.amount_refunded ?? 0;
-      const net = c.amount - refunded;
-      entry.revenue = round2(entry.revenue + net / 100);
-      entry.refunded = round2(entry.refunded + refunded / 100);
-      entry.count += 1;
-      const priceLabel = (c.amount / 100).toFixed(2);
-      entry.byPrice[priceLabel] = (entry.byPrice[priceLabel] ?? 0) + 1;
+      applyStripeCharge(days, c);
     }
-    if (!json.has_more) break;
+    if (!json.has_more) {
+      paginationComplete = true;
+      break;
+    }
     after = data[data.length - 1]?.id;
-    if (!after) break;
+    if (!after) throw new Error("Stripe pagination returned has_more without a continuation id");
   }
+  if (!paginationComplete) throw new Error("Stripe charge query exceeded the 100-page safety limit");
 
   return days;
 }
 
-/** 便捷方法：取单个 Denver 自然日的真实收入。 */
+/** 便捷方法：取单个 Dawson 自然日的真实收入。 */
 export async function fetchStripeDailyRevenue(
   env: Env,
   date: string,

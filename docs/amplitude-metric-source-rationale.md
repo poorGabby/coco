@@ -2,7 +2,7 @@
 
 > 用途:记录日报每个指标的**精确拉取方式**(API 端点 / 请求参数 / 时区 / 日期窗口)与**采用理据**。
 > 生成:2026-07-11。所有数值与参数均经源码逐行核实 + Amplitude 生产 API 实测,非推断。
-> 认证:HTTP Basic,`AMPLITUDE_API_KEY:AMPLITUDE_SECRET_KEY`。项目时区:America/Denver(UTC-7)。
+> 认证:HTTP Basic,`AMPLITUDE_API_KEY:AMPLITUDE_SECRET_KEY`。自动日报标准时区:America/Dawson(全年固定 UTC-7)。
 
 ---
 
@@ -28,9 +28,9 @@
 - `_t` = `Date.now()`(绕开 CDN 缓存)
 
 ⚠️ **不发送 `i`(interval)参数**:`i` + `group_by` 会触发 HTTP 400(源码显式注释)。
-⚠️ **不发送 `timezone` 参数**:Amplitude 默认按项目时区(Denver)解释 `start/end`,与我们计算日期的时区一致,无需显式传。
+⚠️ Segmentation 请求显式发送 `timezone=America/Dawson`；Saved Chart 路径则读取已经保存为 `America/Dawson` 的正式图表。
 
-日期由 `amplitudeDateStr(offset)` 生成,在 America/Denver 时区下取偏移日。`currentDate=amplitudeDateStr(-1)`、`comparisonDate=amplitudeDateStr(-8)`。
+日期由 `amplitudeDateStr(offset)` 生成,在 America/Dawson 时区下取偏移日。`currentDate=amplitudeDateStr(-1)`、`comparisonDate=amplitudeDateStr(-8)`。
 
 ---
 
@@ -40,8 +40,8 @@
 | 端点 | `GET /api/2/events/segmentation` |
 | 事件 (`e`) | `{"event_type":"_active"}` |
 | measure (`m`) | `uniques` |
-| `start` / `end` | `amplitudeDateStr(-7)` → `amplitudeDateStr(-1)`(近 7 天,Denver) |
-| 时区 | America/Denver(项目默认,未显式传) |
+| `start` / `end` | `amplitudeDateStr(-7)` → `amplitudeDateStr(-1)`(近 7 天,Dawson) |
+| 时区 | America/Dawson(固定 UTC-7) |
 | 取值 | 当前日值;WoW = 当前日 vs 7 天前同日 |
 | 07-09 实测 | **99** |
 
@@ -52,7 +52,7 @@
 | 事件 (`e`) | `{"event_type":"_new"}` |
 | measure (`m`) | `uniques` |
 | `start` / `end` | `amplitudeDateStr(-7)` → `amplitudeDateStr(-1)` |
-| 时区 | America/Denver |
+| 时区 | America/Dawson |
 | 取值 | 当前日值;WoW = 当前日 vs 7 天前同日 |
 | 07-09 实测 | **51** |
 
@@ -64,7 +64,7 @@
 | measure (`m`) | `uniques` |
 | `start` / `end` | 本周一 `amplitudeWeekMonday(0)` → `yesterday`(= **周内至今**) |
 | 上周对比窗口 | `amplitudeWeekMonday(-1)` → `amplitudeDateStr(-8)`(上周一 → 上周同一天) |
-| 时区 | America/Denver |
+| 时区 | America/Dawson |
 | 取值 | `periodTotalUniques`(整段去重,非日趋势) |
 | 07-09 实测 | **234**(周内 4 天;整周图表 ~287-290) |
 
@@ -75,7 +75,7 @@
 | 事件 (`e`) | `{"event_type":"purchase_completed","group_by":[{"type":"event","value":"product"}]}` |
 | measure (`m`) | `uniques` |
 | `start` / `end` | `amplitudeDateStr(-7)` → `amplitudeDateStr(-1)` |
-| 时区 | America/Denver |
+| 时区 | America/Dawson |
 | 取值 | 按 product 分段(9.99 / 6.99),取各段昨日人数 |
 | Revenue 派生 | 本地纯函数:`9.99×人数 + 6.99×人数`(`report.ts` 的 `deriveRevenueSnapshot`) |
 | 07-09 实测 | 9.99×2 + 6.99×1 = **$26.97** ✅ 与图表一致 |
@@ -84,7 +84,7 @@
 | 项 | 值 |
 |---|---|
 | 端点 | `GET /api/3/chart/{id}/query` |
-| Chart ID | New User `18lt8h9t`、Purchaser `5of8047n` |
+| Chart ID | New User `lthx47q8`、Purchaser `v5i4q52e` |
 | 图表类型 | N-Day Retention(UTC-7) |
 | New User Retention 口径 | `_new → companion_alive_daily`；Retention Method = N-day；Interval = Daily |
 | 读取 | Chart JSON `series.combined` 第一行，D1/D3/D7 索引 2/4/8 的 count/outof/incomplete |
@@ -98,7 +98,7 @@
 
 **3.1 用的是 Amplitude 官方标准定义。** `_active` / `_new` 是平台内置的全局特殊事件(Any Active Event / New User),不掺任何人工过滤或分段。以它算 DAU/新增 = 直接采用 Amplitude 官方口径,比 UI 里可能被随手改过的图表更"标准"。
 
-**3.2 时区一致,且实测无边界污染。** start/end 用 Denver 时区算,Amplitude 也按项目 Denver 时区解释——一致,无偏移。实测证伪"UTC 边界把 07-10 漏进 07-09":
+**3.2 时区一致,且实测无边界污染。** start/end 用 Dawson 时区计算，正式图表和 Segmentation 请求也显式使用 `America/Dawson`——全年固定 UTC-7，无夏令时漂移。历史实测证伪"UTC 边界把 07-10 漏进 07-09":
 
 ```
 DAU 07-09:  end=07-09 → 99  | end=07-10 → 99  | end=07-15 → 99   (纹丝不动)
@@ -119,7 +119,7 @@ dailyTrend: ... "07-08":88, "07-09":99, "07-10":107   (每日独立按日期存)
 | 与 UI 图表一致性 | ❌ DAU/New 差 ~5、WAU 差 ~56 | ✅ 逐格一致 |
 | 可审计/防漂移 | ✅ 代码+git,集中注册表 | ⚠️ UI 改动静默传导,无版本记录 |
 | 稳定性/耦合 | ✅ 无外部耦合,历史值稳定 | ⚠️ 图表被改 → 数字跟着变 |
-| 时区正确性 | ✅ Denver,实测无偏移 | ⚠️ `extractTimeseries` 用北京时间选列,是真 bug,切换须先修 |
+| 时区正确性 | ✅ America/Dawson,固定 UTC-7 | ✅ 正式图表和 `extractTimeseries` 已统一 America/Dawson |
 | 解析健壮性 | ✅ 结构化 JSON | ⚠️ CSV 格式多变(N-Day/Bracket、`product`/`Segment` 表头、分段行) |
 | 未完结数据 | ✅ 按日期精确取昨日 | ⚠️ 末列常是未完结今日/本周,需排除 |
 | 肉眼对账友好 | ⚠️ 需解释为何 ≠ 图表 | ✅ 打开 Amplitude 即可核对 |
@@ -128,7 +128,7 @@ dailyTrend: ... "07-08":88, "07-09":99, "07-10":107   (每日独立按日期存)
 
 ## 五、差异根因(明确)
 
-- **历史 DAU 对账（已废止）**：下方 `a29etrut` 数据仅记录 2026-07 的旧 7 日移动平均 Chart 对账，不再是正式 DAU。当前正式口径是 Calendar Day Chart `ilhu9t17` 的 `_active` uniques，按 America/Denver 完结自然日读取，不做 rolling average。
+- **历史 DAU 对账（已废止）**：下方 `a29etrut` 数据仅记录 2026-07 的旧 7 日移动平均 Chart 对账，不再是正式 DAU。当前正式口径是 Calendar Day Chart `ilhu9t17` 的 `_active` uniques，按 America/Dawson 完结自然日读取，不做 rolling average。
 - **WAU 低约 56**:机器人 = 本周一→昨日的 **week-to-date**(现 4 天);图表 = **整周**(~287-290)。窗口天数不同。
 
 > 均**非**时区、UTC 边界或 `i` 参数所致——这些假设已逐条实测排除。

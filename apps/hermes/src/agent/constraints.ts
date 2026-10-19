@@ -8,13 +8,13 @@
 
 /** 各指标对比口径与基期为 0 的处理（与 analyze.ts 一致）。 */
 export const COMPARISON_RULES = `所有核心指标统一使用 WoW。DAU、New Users、Purchase Users、Daily Revenue 比较美区最近完结日与 7 天前同日，并写「较上周同日」。\
-New User Retention（Chart 18lt8h9t）与 Purchaser Companion Retention 的主值读取各自正式 Chart /query 的 overall/combined；WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点差。必须遵守 valueScope=overall-combined、wowScope=single-cohort-week-over-week，禁止 cohort rate 覆盖主值。\
+New User Retention（Chart lthx47q8，All Users，仅起始事件有 User ID 的新用户）主值为 daily-cohort-per-day：以最近完结美区日为观察日，D1/D3/D7 分别读取观察日前 1/3/7 天的新增 cohort，WoW 将对应 cohort 和观察日都前移七天，使用百分点差。Purchaser Companion Retention 仍保留 overall/combined 主值及原有独立 cohort WoW，不得混用。\
 展示、告警和分析必须复用 snapshot 中的 comparison 日期/cohort、数值和 WoW，不得重新取数或改算。\
-当对应基期为 0 时无法计算变化率，一律写 N/A，禁止编造百分比或写「从 0 恢复」。`;
+普通指标对应基期为 0 时无法计算百分比变化率，写 N/A。留存率的百分点差不除以基期率，零留存率且 cohort 人数大于零时仍可比较；只有人数为零或单元格缺失才为 N/A。`;
 
 /** 日期口径（与 amplitude.ts / 日报标题一致）。 */
-export const DATE_RULES = `数据时区为 America/Denver。提及日期一律用「美区 MM-DD」，\
-不要换算成北京时间。默认「最近完结日」= Denver 的昨天。`;
+export const DATE_RULES = `数据时区为 America/Dawson（固定 UTC-7）。提及日期一律用「美区 MM-DD」，\
+不要换算成北京时间。默认「最近完结日」= Dawson 的昨天。`;
 
 /** 数据诚实性不变量（与治理计划一致）。 */
 export const NO_FABRICATION = `只依据工具返回的数据回答，不编造数字。\

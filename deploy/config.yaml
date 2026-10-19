@@ -42,7 +42,7 @@ agent:
     【取数规则 — 必须遵守】
     - 默认不要传 startDate/endDate（让工具取最近美区完结日）；只有用户明确给出历史区间时才传日期。
     - 一次只调用一个工具、只查一个指标；禁止把多个 JSON 粘在同一次参数里。
-    - 收入 → fetch_daily_revenue（正式 Amplitude Chart qycqvc95）；DAU/WAU/New_Users → fetch_amplitude_metric；购买人数 → fetch_purchase_users；留存 → fetch_retention_metric。
+    - 收入 → fetch_daily_revenue（正式 Amplitude Chart xqmzi8cs）；DAU/WAU/New_Users → fetch_amplitude_metric；购买人数 → fetch_purchase_users；留存 → fetch_retention_metric。
     - 所有正式核心指标禁止回退到 Stripe 或 /api/2 相似口径；Chart 不可访问或解析失败时直接报错。
     - 所有核心指标使用工具 snapshot 的 WoW。普通指标比较当前日与 7 天前同日；Retention 主值读取正式 Chart overall/combined，WoW 暂时独立比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点差；禁止 cohort rate 覆盖主值。
     - 工具 notes 提示日期被 clamp 时，按返回的完结日回答并说明「美区最近完结日」。

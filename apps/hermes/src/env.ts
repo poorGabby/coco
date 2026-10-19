@@ -17,6 +17,7 @@ export type Env = {
   amplitudeDashboardUrl: string;
   feishuAppId: string;
   feishuAppSecret: string;
+  feishuVerificationToken: string;
   feishuReportChatId: string;
   feishuBotOpenId: string;
   feishuWikiSpaceIds: string[];
@@ -37,7 +38,7 @@ export type Env = {
   feishuCocoSkillDocToken: string;
   /** 受控 Agentic 自由问答开关（默认关闭，关掉即退回现有 askQuestion） */
   hermesAgentEnabled: boolean;
-  /** Stripe 密钥（保留给非核心支付诊断；正式 Daily Revenue 不使用 Stripe）。 */
+  /** Stripe 只读密钥；正式 Daily Revenue 使用 Charges API。 */
   stripeApiKey: string;
   /** MCP 可插拔数据源开关（默认关闭，关掉即完全等价于现状，不加载任何 MCP） */
   hermesMcpEnabled: boolean;
@@ -45,6 +46,19 @@ export type Env = {
   hermesMcpServers: string;
   /** CoCo Data MCP 的 Bearer 密钥（Hermes Gateway 调用 /mcp 时校验；空=拒绝访问） */
   cocoMcpKey: string;
+  /** 敏感业务数据工具总开关；权限和飞书调用范围配置完成前保持关闭。 */
+  businessDbEnabled: boolean;
+  /** Cloud Run 使用 /cloudsql/<instance-connection-name>；本地仅允许 Auth Proxy 回环地址。 */
+  databaseHost: string;
+  databasePort: number;
+  databaseName: string;
+  databaseUser: string;
+  databasePassword: string;
+  goBackendOrigin?: string;
+  goBackendBearerToken?: string;
+  goBackendIamAudience?: string;
+  amplitudeExportBucket?: string;
+  amplitudeExportJob?: string;
 };
 
 function requireEnv(name: string): string {
@@ -76,6 +90,7 @@ export function loadEnv(): Env {
     ),
     feishuAppId: optionalEnv("FEISHU_APP_ID"),
     feishuAppSecret: optionalEnv("FEISHU_APP_SECRET"),
+    feishuVerificationToken: optionalEnv("FEISHU_VERIFICATION_TOKEN"),
     feishuReportChatId: optionalEnv("FEISHU_REPORT_CHAT_ID"),
     feishuBotOpenId: optionalEnv("FEISHU_BOT_OPEN_ID"),
     feishuWikiSpaceIds: optionalEnv("FEISHU_WIKI_SPACE_IDS")
@@ -111,6 +126,19 @@ export function loadEnv(): Env {
     ),
     hermesMcpServers: optionalEnv("HERMES_MCP_SERVERS"),
     cocoMcpKey: optionalEnv("COCO_MCP_KEY"),
+    businessDbEnabled: ["1", "true", "yes", "on"].includes(
+      optionalEnv("BUSINESS_DB_ENABLED").toLowerCase(),
+    ),
+    databaseHost: optionalEnv("DATABASE_HOST"),
+    databasePort: Number(optionalEnv("DATABASE_PORT", "5432")),
+    databaseName: optionalEnv("DATABASE_NAME"),
+    databaseUser: optionalEnv("DATABASE_USER"),
+    databasePassword: optionalEnv("DATABASE_PASSWORD"),
+    goBackendOrigin: optionalEnv("GO_BACKEND_ORIGIN"),
+    goBackendBearerToken: optionalEnv("GO_BACKEND_BEARER_TOKEN"),
+    goBackendIamAudience: optionalEnv("GO_BACKEND_IAM_AUDIENCE"),
+    amplitudeExportBucket: optionalEnv("AMPLITUDE_EXPORT_BUCKET"),
+    amplitudeExportJob: optionalEnv("AMPLITUDE_EXPORT_JOB"),
   };
 }
 

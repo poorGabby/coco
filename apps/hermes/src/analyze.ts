@@ -2,6 +2,7 @@ import type { ChartSnapshot } from "./amplitude.js";
 import type { Env } from "./env.js";
 import { getDocumentRawContent } from "./feishu.js";
 import { generateGeminiJson } from "./llm.js";
+import { dailyCohortContext } from "./retention-daily-cohorts.js";
 
 export type AlertItem = {
   title: string;
@@ -30,13 +31,13 @@ const ANALYSIS_SYSTEM_PROMPT_FALLBACK = `你是 Furever Dock 内部数据分析�
 
 规则：
 1. 只根据提供的数据分析，不编造。
-2. 所有核心指标统一采用 WoW。普通日指标比较当前美区数据日与 7 天前同日。New User Retention 与 Purchaser Companion Retention 的主值必须使用各自正式 Chart /query 的 overall/combined；WoW 暂时单独比较最新成熟单日 cohort 与 7 天前同日 cohort，使用百分点（pp）。禁止用 cohort rate 覆盖主值。
+2. 所有核心指标统一采用 WoW。普通日指标比较当前美区数据日与 7 天前同日。New User Retention 仅有 User ID 的新用户，以完结观察日减 1/3/7 天分别选取 D1/D3/D7 单日 cohort，WoW 将该 cohort 和观察日都前移七天，使用百分点（pp）。Purchaser Companion Retention 保留 overall/combined 主值及独立 cohort WoW。
 3. 告警判定必须复用 snapshot 的 WoW。普通指标跌幅 >15% 或 Retention 下降超过 15pp，或关键指标显著走弱 → Alert；次重要指标走弱但未达告警线 → Watch。
 4. 正向变动也可标记（如「正向异常」）。
 5. 深度分析需引用具体数据、关联指标交叉验证。
-6. 中文输出。提及任何日期时，一律使用「美区 MM-DD」格式，日期取自指标数据标注的 America/Denver 日期。普通指标写「较上周同日」；New User Retention / Purchaser Companion Retention 明确说明“主值为 overall，WoW 为单日 cohort 周同比”。不要换算成北京时间。
+6. 中文输出。提及日期时使用「美区 MM-DD」，日期来自 America/Dawson（固定 UTC-7）。New User Retention 写明各点 cohort 日期、回访观察日和上周对应日期；Purchaser Companion Retention 主值仍为 overall。不要换算成北京时间。
 7. **变化率 0.0%/0.0pp ≠ 数据缺失。** 按 WoW 口径如实写「持平」；只有 N/A 或 — 才代表无法比较或缺失。
-8. **比较基期为 0 → 变化率 N/A。** 禁止编造百分比或写「从 0 恢复」。绝对量照常展示；当前真实值为 0 仍写 0。`;
+8. **普通指标比较基期为 0 → 百分比变化率 N/A。** 留存率按百分点差比较，零留存率且用户分母大于零时仍有效；分母为零或数据缺失才为 N/A。绝对量照常展示，当前真实值为 0 仍写 0。`;
 
 // ── 独立 Prompt 缓存（60s TTL，与全量 wiki cache 解耦） ──
 
@@ -89,6 +90,7 @@ function snapshotToLine(s: ChartSnapshot): string {
     if (!retention) return `- ${s.title} (${s.metricLabel}): N/A`;
     return (["D1", "D3", "D7"] as const).map((day) => {
       const point = retention.points[day];
+      if (retention.valueScope === "daily-cohort-per-day") return dailyCohortContext(s.title, day, point);
       const currentRate = point.rate == null ? "N/A" : `${(point.rate * 100).toFixed(2)}%`;
       const wowCurrentRate = point.wowCurrentRate == null ? "N/A" : `${(point.wowCurrentRate * 100).toFixed(2)}%`;
       const comparisonRate = point.comparisonRate == null ? "N/A" : `${(point.comparisonRate * 100).toFixed(2)}%`;
@@ -106,7 +108,7 @@ function snapshotToLine(s: ChartSnapshot): string {
     s.changePct != null
       ? `${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%`
       : "N/A";
-  // timeseries 的 yesterday/dayBefore 是美区(America/Denver)日期字符串(如 "2026-07-11")；
+  // timeseries 的 yesterday/dayBefore 是美区(America/Dawson)日期字符串(如 "2026-07-11")；
   // 带上明确日期锚点，避免 LLM 自行推断日期导致与标题错位。
   const yDate = s.kind === "timeseries" && s.yesterday ? `(美区 ${s.yesterday})` : "";
   const dDate = s.kind === "timeseries" && s.dayBefore ? `(美区 ${s.dayBefore})` : "";
@@ -118,11 +120,12 @@ function snapshotToLine(s: ChartSnapshot): string {
 }
 
 export function buildAnalysisPrompt(snapshots: ChartSnapshot[]): string {
-  // 从第一个 timeseries snapshot 取实际数据覆盖的美区(America/Denver)日期
+  // 从第一个 timeseries snapshot 取实际数据覆盖的美区(America/Dawson)日期
   const ts = snapshots.find(s => s.kind === "timeseries" && s.yesterday && !s.error);
   const dataDateMst = ts?.yesterday?.slice(5) ?? ""; // "07-09"
 
-  const lines = [`数据覆盖日期: 美区 ${dataDateMst}（America/Denver 时区，随夏令时偏移）。分析中提及任何日期（含 WoW 对比对象）时，一律使用「美区 MM-DD」格式。普通指标说明较上周同日；New User Retention / Purchaser Companion Retention 主值是各自正式 Chart 的 overall/combined，WoW 暂时是最新成熟单日 cohort vs 7 天前同日 cohort，两者不得混用；不要换算成北京时间。`, "", "## 指标清单", ""];
+  const observationDate = ts?.yesterday ?? snapshots.find(s => s.snapshot?.retention?.observationDate)?.snapshot?.retention?.observationDate;
+  const lines = [`数据覆盖日期: 美区 ${observationDate?.slice(5) ?? dataDateMst}（America/Dawson，全年固定 UTC-7）。所有涨跌较上周同日。New User Retention 只计有 User ID 新用户，主值为各 Day N 独立单日 cohort，WoW 将该 cohort 和观察日都前移七天；Purchaser Companion Retention 仍为 overall 主值及独立 cohort WoW。日期复用 snapshot，不换算成北京时间。`, "", "## 指标清单", ""];
   for (const s of snapshots) {
     lines.push(snapshotToLine(s));
   }
@@ -165,8 +168,9 @@ export function buildAnalysisPrompt(snapshots: ChartSnapshot[]): string {
     "```",
     "",
     "要求：",
+    "- 日报收入来自 Stripe 成功且已支付的 USD Charge，并扣除该 Charge 已退款金额；Purchase Completed / First Purchase 仍是 Amplitude 用户行为口径，不能与 Stripe Charge 笔数混作同一分母。没有同口径去重购买人数时，不分析客单价或 ARPPU；仅建议先核对相同渠道、时间及去重口径的数据。",
     "- alertCount 和 watchCount 必须与实际 alerts / watches 数组长度一致",
-    "- 至少 1 个 alert，至多 3 个；至多 6 个 watch",
+    "- 至多 3 个 alert、6 个 watch；没有达到条件的异常时返回空数组，禁止为了凑数量制造告警",
     "- 每个 alert 的 deepAnalysis 必须引用具体数字、做交叉指标关联分析",
     "- summary 要有高度概括，不堆砌数字",
     "- 所有核心指标一律写 WoW；普通指标解释为较上周同日；New User Retention / Purchaser Companion Retention 必须说明主值来自各自正式 Chart 的 overall/combined，而 WoW 来自最新成熟单日 cohort vs 7 天前同日 cohort 的 pp 变化",
@@ -195,13 +199,15 @@ export function fallbackAnalysis(
         const pp = point.wowChangePp;
         if (pp == null) continue;
         const title = `${s.title} — Day ${day.slice(1)}`;
-        const detail = `${title} 主值为 Last 30 days overall ${(Number(point.rate) * 100).toFixed(2)}%；WoW 单日 cohort 从 ${(Number(point.comparisonRate) * 100).toFixed(2)}% 变为 ${(Number(point.wowCurrentRate) * 100).toFixed(2)}%，变化 ${pp.toFixed(2)}pp。`;
+        const detail = retention.valueScope === "daily-cohort-per-day"
+          ? dailyCohortContext(s.title, day, point)
+          : `${title} 主值为 Last 30 days overall ${(Number(point.rate) * 100).toFixed(2)}%；WoW 单日 cohort 从 ${(Number(point.comparisonRate) * 100).toFixed(2)}% 变为 ${(Number(point.wowCurrentRate) * 100).toFixed(2)}%，变化 ${pp.toFixed(2)}pp。`;
         if (pp < -15) {
           alerts.push({
             title: `${title} — ${(Number(point.rate) * 100).toFixed(2)}%（WoW ${pp.toFixed(2)}pp）`,
             value: "见表格",
             summary: `${title} WoW 显著下降 ${Math.abs(pp).toFixed(2)}pp。`,
-            deepAnalysis: `${detail}建议重点关注后续 overall retention。`,
+            deepAnalysis: `${detail}建议关注后续同口径留存。`,
           });
         } else if (pp < -5) {
           watches.push({
@@ -232,23 +238,22 @@ export function fallbackAnalysis(
   }
 
   return {
-    alertCount: alerts.length || 1,
-    watchCount: watches.length || 1,
-    summary: `本日共拉取 ${valid.length} 项指标${errors.length ? `，${errors.length} 项失败` : ""}。${alerts.length > 0 ? `其中 ${alerts.length} 项触发告警。` : "所有指标正常。"}详细数据请见下方指标清单。`,
-    alerts:
-      alerts.length > 0
-        ? alerts
-        : [
-            {
-              title: "无显著告警",
-              value: "",
-              summary: "所有指标波动在正常范围内。",
-              deepAnalysis: "所有普通指标 WoW 与 New User Retention / Purchaser Companion Retention 单日 cohort WoW 变动均未触发告警阈值；两项 Retention 展示主值仍为各自正式 Chart 的 overall/combined。",
-            },
-          ],
+    alertCount: alerts.length,
+    watchCount: watches.length,
+    summary: `本日共拉取 ${valid.length} 项指标${errors.length ? `，${errors.length} 项失败` : ""}。${alerts.length > 0 ? `其中 ${alerts.length} 项触发告警。` : "可比较指标未触发告警阈值。"}详细数据请见下方指标清单。`,
+    alerts,
     watches,
-    hypotheses: "（Gemini 分析暂不可用，以上为 fallback 规则判定，仅供参考。）",
+    hypotheses: "以上按可比较指标和阈值列出变化。原因尚未验证，需先核对相同渠道、时间范围及去重口径的数据。",
   };
+}
+
+export function enforceAnalysisScope(analysis: DailyAnalysis, snapshots: ChartSnapshot[], reportMarkdown: string): DailyAnalysis {
+  // No matching order/frequency/ARPPU denominator is provided to this report.
+  // Reject the entire narrative rather than attempting to edit a generated financial claim.
+  if (/客单价|购买频[次率]|ARPPU|average\s+order\s+value|purchase\s+frequency/i.test(JSON.stringify(analysis))) {
+    return fallbackAnalysis(snapshots, reportMarkdown);
+  }
+  return { ...analysis, alertCount: analysis.alerts.length, watchCount: analysis.watches.length };
 }
 
 export async function analyzeDailySnapshots(
@@ -264,10 +269,12 @@ export async function analyzeDailySnapshots(
       "",
       "## Runtime comparison contract（优先级高于文档中的旧比较规则）",
       "所有普通核心指标必须使用 snapshot 中的 WoW：当前数据日与 7 天前同日比较，并解释为‘较上周同日’。",
-      "New User Retention 与 Purchaser Companion Retention 主值必须使用各自 snapshot 的 overall/combined rate；WoW 暂时使用 snapshot 标记为 single-cohort-week-over-week 的 wowChangePp。禁止用 wowCurrentRate 或 comparisonRate 覆盖主值。",
+      "New User Retention 主值必须使用 snapshot 的 daily-cohort-per-day rate（有 User ID，D1/D3/D7 各自的单日 cohort）。WoW 使用各 point 的 comparisonCohortDate、comparisonObservationDate 和 wowChangePp，不得改成共用一批 cohort、overall 或 DoD。Purchaser Companion Retention 保留 overall/combined 主值及原有独立 cohort WoW。",
       "告警、关注项、摘要和正文必须复用各 snapshot 已计算好的 WoW，不得自行重算。",
+      "日报 Daily Revenue 直接使用 Stripe snapshot：成功且已支付的 USD Charge，按 Charge 创建日归属并扣除该 Charge 已退款金额。必须复用 snapshot 数值和 WoW，不得用 Amplitude 购买事件或固定单价重新估算。Stripe 拉取失败时收入未知。没有符合阈值的异常时 alerts/watches 必须为空数组。",
     ].join("\n");
-    return await generateGeminiJson<DailyAnalysis>(env, systemPrompt, userPrompt);
+    const analysis = await generateGeminiJson<DailyAnalysis>(env, systemPrompt, userPrompt);
+    return enforceAnalysisScope(analysis, snapshots, reportMarkdown);
   } catch (err) {
     console.error("Gemini analysis failed, using fallback:", err instanceof Error ? err.message : String(err));
     // fallback：用规则判断告警
